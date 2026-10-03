@@ -19,6 +19,7 @@ export async function createProfileAction(formData: FormData) {
 export async function saveSimulatedSession(input: {
   userId: string;
   level: number;
+  pathId?: string;
   metrics: SessionMetrics;
   baseline: Baseline;
   raw: RawSample[];
@@ -29,6 +30,7 @@ export async function saveSimulatedSession(input: {
   const r = await addSession({
     userId: String(input.userId),
     level: input.level,
+    pathId: typeof input.pathId === "string" ? input.pathId : undefined,
     metrics: input.metrics,
     baseline: input.baseline,
     raw: Array.isArray(input.raw) ? input.raw.slice(0, 20000) : undefined,

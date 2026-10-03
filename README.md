@@ -34,6 +34,17 @@ accuracy, precision, recall, F1, false-positive rate and inference time per wind
 `models/lgbm.txt` for `infer.py`. Tests (`pytest`) use generated signals only to check the code, never to train.
 Labels: `steady` = 0; `simulated_tremor` / `clinical_tremor` = 1; other labels are skipped.
 
+## Target paths
+27 paths across the 5 levels live in `web/src/lib/paths.ts` (straight/diagonal strokes, arcs and S-curves, a fusiform
+excision, zigzag/sawtooth/square-wave/suture weaves, spirals, figure-eight, clover, square spiral, circles, ellipse,
+triangle, pentagram, trefoil knot). The first path of each level is the original design path. Pick one (or shuffle)
+from Settings on Live Session; each session records its `pathId`.
+```
+cd web && npm run check:paths     # validates every path (in bounds, continuous, sane length)
+npm run export:paths              # writes data/paths.json (mm) for the Pi
+```
+The Pi uses `pi/paths.py` (`deviation_mm`, `accuracy_pct`) against the same shapes, so site and Pi score identically.
+
 ## Website (`web/`)
 Next.js, custom SVG/canvas charts, JSON-file storage in `web/data/` (gitignored). UI follows the design handoff
 (5 screens: Live Session, Progress, Sessions, Leaderboard, Scoring).

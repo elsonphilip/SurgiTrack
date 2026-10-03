@@ -42,6 +42,8 @@ export interface Session extends SessionMetrics {
   hasRaw: boolean;
   samples: number;
   baseline?: Baseline;
+  /** Target path used (see lib/paths.ts). */
+  pathId?: string;
 }
 
 export interface RawSample {

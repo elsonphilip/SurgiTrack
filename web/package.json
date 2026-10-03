@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint",
     "seed:demo": "NODE_OPTIONS=--conditions=react-server tsx scripts/seed-demo.ts",
-    "seed:clear": "NODE_OPTIONS=--conditions=react-server tsx scripts/seed-demo.ts clear"
+    "seed:clear": "NODE_OPTIONS=--conditions=react-server tsx scripts/seed-demo.ts clear",
+    "check:paths": "tsx scripts/check-paths.ts",
+    "export:paths": "tsx scripts/export-paths.ts"
   },
   "dependencies": {
     "next": "16.3.8",

@@ -3,6 +3,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { computeScore, levelFromSessions, MAX_LEVEL } from "./scoring";
+import { getPath } from "./paths";
 import type { Baseline, DataSource, Profile, RawSample, Session, SessionMetrics } from "./types";
 
 /**
@@ -114,6 +115,7 @@ export interface NewSession {
   date?: string;
   source: DataSource;
   baseline?: Baseline;
+  pathId?: string;
   raw?: RawSample[];
 }
 
@@ -140,6 +142,7 @@ export async function addSession(input: NewSession) {
       hasRaw: !!input.raw?.length,
       samples: input.raw?.length ?? 0,
       baseline: input.baseline,
+      pathId: input.pathId && getPath(input.pathId)?.level === input.level ? input.pathId : undefined,
     };
     db.sessions.push(session);
     refresh(db, profile);

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LEVELS } from "@/lib/scoring";
+import { defaultPath, getPath, pathsForLevel, samplePath, type PathDef } from "@/lib/paths";
 import type { RawSample } from "@/lib/types";
 import { saveSimulatedSession } from "@/app/actions";
 import { useLive } from "./Shell";
@@ -15,18 +16,6 @@ import { BleedLines, CardHead, Stat } from "./ui";
  */
 
 const W = 960, H = 480, PX = 8; // canvas logical size; 8 px = 1 mm
-const tri = (u: number) => 2 * Math.abs(2 * (u - Math.floor(u + 0.5))) - 1;
-function pathPt(l: number, t: number): [number, number] {
-  if (l === 1) return [120 + 720 * t, 240];
-  if (l === 2) return [120 + 720 * t, 340 - 200 * Math.sin(Math.PI * t)];
-  if (l === 3) return [120 + 720 * t, 240 + 100 * tri(t * 4)];
-  if (l === 4) {
-    const a = t * 5 * Math.PI, r = 18 + 180 * t;
-    return [480 + r * Math.cos(a), 240 + r * Math.sin(a)];
-  }
-  const a = -Math.PI / 2 + t * 2 * Math.PI;
-  return [480 + 160 * Math.cos(a), 240 + 160 * Math.sin(a)];
-}
 const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
 const rnd = () => Math.random() - 0.5;
 const pad = (s: string | number, n: number) => String(s).padStart(n, " ");
@@ -39,8 +28,23 @@ interface Result {
   acc: number; dev: number; trem: number; smooth: number; time: number; pulses: number;
 }
 export interface LastSession { acc: number; dev: number; trem: number; smooth: number }
-interface Settings { sessionLength: number; traceStyle: "heat" | "mono"; showTolerance: boolean; showCamera: boolean }
-const DEFAULTS: Settings = { sessionLength: 12, traceStyle: "heat", showTolerance: true, showCamera: true };
+interface Settings { sessionLength: number; traceStyle: "heat" | "mono"; showTolerance: boolean; showCamera: boolean; pathId: string }
+const DEFAULTS: Settings = { sessionLength: 12, traceStyle: "heat", showTolerance: true, showCamera: true, pathId: "" };
+
+/** "" = the level's original design path, "shuffle" = random path from the level each run, else a path id. */
+function resolvePath(level: number, pathId: string, avoidId?: string): PathDef {
+  if (pathId === "shuffle") {
+    const all = pathsForLevel(level), pool = all.filter((p) => p.id !== avoidId);
+    const list = pool.length ? pool : all;
+    return list[Math.floor(Math.random() * list.length)];
+  }
+  const p = pathId ? getPath(pathId) : undefined;
+  return p && p.level === level ? p : defaultPath(level);
+}
+function cachePath(r: { settings: Settings; path: PathDef; pts: number[][] }, level: number) {
+  r.path = resolvePath(level, r.settings.pathId, r.path.id);
+  r.pts = samplePath(r.path, 320);
+}
 
 const CAL = [
   { title: "Strap on the wristband", body: "Fit the band snug just above the wrist bone on your instrument hand, IMU facing up. The Arduino light turns blue once data streams.", btn: "Wristband is on" },
@@ -86,24 +90,29 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
   const [result, setResult] = useState<Result | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activePath, setActivePath] = useState(defaultPath(Math.min(Math.max(startLevel, 1), 5)).id);
 
   const cv = useRef<HTMLCanvasElement>(null);
   const R = useRef({
-    phase: (autoStart ? "calib" : "idle") as Phase, level, calStep: 0, trace: [] as [number, number, boolean][], pts: [] as number[][],
+    phase: (autoStart ? "calib" : "idle") as Phase, level, calStep: 0, trace: [] as [number, number, boolean][], pts: [] as number[][], path: defaultPath(Math.min(Math.max(startLevel, 1), 5)),
     acc: { n: 0, in: 0, dev: 0, tr: 0, pulses: 0 }, wasOut: false, hapUntil: 0, t0: 0, m0: 0, lastUi: 0,
     hx: [] as number[], hy: [] as number[], raw: [] as RawSample[], settings: DEFAULTS, ct: 0 as unknown as ReturnType<typeof setInterval>,
   });
 
   const setPhase = (p: Phase) => { R.current.phase = p; setPhaseS(p); };
-  const cache = (l: number) => {
-    R.current.pts = Array.from({ length: 321 }, (_, i) => pathPt(l, i / 320));
-  };
 
   useEffect(() => {
     try {
       const raw = localStorage.getItem("surgitrack.settings");
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing from localStorage after mount (SSR-safe)
-      if (raw) setSettings({ ...DEFAULTS, ...JSON.parse(raw) });
+      if (raw) {
+        const merged = { ...DEFAULTS, ...JSON.parse(raw) } as Settings;
+        R.current.settings = merged;
+        cachePath(R.current, R.current.level);
+        /* eslint-disable react-hooks/set-state-in-effect -- syncing from localStorage after mount (SSR-safe) */
+        setSettings(merged);
+        setActivePath(R.current.path.id);
+        /* eslint-enable react-hooks/set-state-in-effect */
+      }
     } catch {}
   }, []);
   useEffect(() => {
@@ -126,7 +135,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
     setSaving(true);
     setError(null);
     try {
-      const res = await saveSimulatedSession({ userId: profileId, level: r.level, metrics, baseline: { pitch: 2.1, roll: -1.4, noiseSigma: 0.018 }, raw: r.raw });
+      const res = await saveSimulatedSession({ userId: profileId, level: r.level, pathId: r.path.id, metrics, baseline: { pitch: 2.1, roll: -1.4, noiseSigma: 0.018 }, raw: r.raw });
       setResult({ ...res, acc: accuracy, dev, trem, smooth, time, pulses: A.pulses });
       router.refresh();
     } catch (e) {
@@ -147,6 +156,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
     clearInterval(R.current.ct);
     R.current.trace = [];
     R.current.calStep = 0;
+    if (R.current.settings.pathId === "shuffle") { cachePath(R.current, R.current.level); setActivePath(R.current.path.id); }
     setCalStep(0); setCalCount(5); setResult(null); setError(null); setLive(EMPTY);
     R.current.phase = "calib"; setPhaseS("calib");
   }, []);
@@ -171,8 +181,8 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
   };
   const setLevel = (l: number) => {
     if (R.current.phase === "run") return;
-    R.current.level = l; cache(l); R.current.trace = [];
-    setLevelS(l);
+    R.current.level = l; cachePath(R.current, l); R.current.trace = [];
+    setLevelS(l); setActivePath(R.current.path.id);
     if (R.current.phase === "done") setPhase("idle");
   };
 
@@ -186,7 +196,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
   useEffect(() => {
     const r = R.current;
     r.level = level;
-    cache(level);
+    cachePath(r, level);
     r.m0 = performance.now();
     let raf = 0;
     const sensors = (a: number) => {
@@ -236,7 +246,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
       if (r.phase === "run") {
         const len = r.settings.sessionLength;
         const el = (now - r.t0) / 1000, tt = Math.min(1, el / len);
-        const [tx, ty] = pathPt(r.level, tt);
+        const [tx, ty] = r.path.at(tt);
         const slip = Math.exp(-Math.pow((tt - 0.56) / 0.035, 2)) * tol * 1.9;
         const burst = Math.sin(e * 0.8) > 0.8 ? 3.2 : 1, trAmp = 0.35 * burst;
         const dx = Math.sin(e * 0.9) * 0.7 + Math.sin(e * 2.3 + 1) * 0.45 + slip + Math.sin(e * 2 * Math.PI * 8.6) * trAmp;
@@ -313,7 +323,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
             <div style={{ display: "flex", alignItems: "baseline", gap: 14, flexWrap: "wrap" }}>
               <span className="card-title">Path trace</span>
-              <span className="mono muted" style={{ fontSize: 12 }}>{phaseLabel} · session #{nextId}</span>
+              <span className="mono muted" style={{ fontSize: 12 }}>{phaseLabel} · session #{nextId}{activePath !== defaultPath(level).id && ` · ${getPath(activePath)?.name ?? ""}`}</span>
             </div>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <span className="chip" title="No hardware connected — sensor data is generated in the browser" style={{ color: steel }}>SIMULATED</span>
@@ -487,6 +497,24 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
                 <input type="number" min={5} max={40} value={settings.sessionLength} disabled={phase === "run"}
                   onChange={(e) => setSettings((s) => ({ ...s, sessionLength: clamp(Number(e.target.value) || 12, 5, 40) }))}
                   className="mono" style={{ width: 70, height: 34, borderRadius: 999, border: 0, background: "var(--pill)", color: "var(--cream)", padding: "0 12px" }} />
+              </label>
+              <label style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                Path
+                <select
+                  value={settings.pathId === "shuffle" || pathsForLevel(level).some((p) => p.id === settings.pathId) ? settings.pathId : ""}
+                  disabled={phase === "run"}
+                  onChange={(e) => {
+                    const pathId = e.target.value;
+                    R.current.settings = { ...R.current.settings, pathId };
+                    cachePath(R.current, R.current.level); R.current.trace = [];
+                    setActivePath(R.current.path.id);
+                    setSettings((s) => ({ ...s, pathId }));
+                  }}
+                  style={{ maxWidth: 150, height: 34, borderRadius: 999, border: 0, background: "var(--pill)", color: "var(--cream)", padding: "0 10px" }}>
+                  <option value="">Default</option>
+                  <option value="shuffle">Shuffle each run</option>
+                  {pathsForLevel(level).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
               </label>
               <label style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
                 Trace style

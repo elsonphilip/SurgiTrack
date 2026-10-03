@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 /**
  * Pi → site. Body:
  * { userId, level, metrics:{accuracy,avgDeviationMm,tremor(0-10),smoothness,completionTimeS,hapticPulses},
- *   baseline?:{pitch,roll,noiseSigma}, date?, raw?: RawSample[] }
+ *   baseline?:{pitch,roll,noiseSigma}, pathId?, date?, raw?: RawSample[] }
  * Sessions posted here are stored as source:"device". If SURGITRACK_API_KEY is set, send it as
  * `Authorization: Bearer <key>`.
  */
@@ -25,6 +25,7 @@ export async function POST(request: Request) {
     const { session, promoted, counted } = await addSession({
       userId: b.userId,
       level: Number(b.level),
+      pathId: typeof b.pathId === "string" ? b.pathId : undefined,
       metrics: b.metrics,
       date: typeof b.date === "string" && !Number.isNaN(Date.parse(b.date)) ? new Date(b.date).toISOString() : undefined,
       source: "device",
