@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { VIEW_COOKIE, type View } from "@/lib/view";
 
 interface LiveCtx {
   haptic: boolean;
@@ -10,6 +11,7 @@ interface LiveCtx {
   dist: string;
   setDist: (v: string) => void;
   startSignal: number;
+  view: View;
 }
 const Ctx = createContext<LiveCtx | null>(null);
 export const useLive = () => {
@@ -18,19 +20,33 @@ export const useLive = () => {
   return c;
 };
 
-const NAV = [
-  ["live", "Live Session"],
-  ["progress", "Progress"],
-  ["sessions", "Sessions"],
-  ["leaderboard", "Leaderboard"],
-  ["scoring", "Scoring"],
-] as const;
+function saveView(v: View) {
+  document.cookie = `${VIEW_COOKIE}=${v}; path=/; max-age=31536000; samesite=lax`;
+}
+
+const NAV: Record<View, readonly (readonly [string, string])[]> = {
+  detailed: [
+    ["live", "Live Session"],
+    ["progress", "Progress"],
+    ["sessions", "Sessions"],
+    ["leaderboard", "Leaderboard"],
+    ["scoring", "Scoring"],
+  ],
+  simple: [
+    ["live", "Practice"],
+    ["progress", "My Progress"],
+    ["sessions", "History"],
+    ["leaderboard", "Leaderboard"],
+  ],
+};
 
 export function Shell({
   profile,
+  initialView,
   children,
 }: {
   profile: { id: string; name: string; level: number; demo: boolean };
+  initialView: View;
   children: ReactNode;
 }) {
   const path = usePathname();
@@ -38,8 +54,14 @@ export function Shell({
   const [haptic, setHaptic] = useState(false);
   const [dist, setDist] = useState("14.2");
   const [startSignal, setStartSignal] = useState(0);
+  const [view, setViewState] = useState<View>(initialView);
   const base = `/p/${profile.id}`;
-  const ctx = useMemo(() => ({ haptic, setHaptic, dist, setDist, startSignal }), [haptic, dist, startSignal]);
+  const ctx = useMemo(() => ({ haptic, setHaptic, dist, setDist, startSignal, view }), [haptic, dist, startSignal, view]);
+  const setView = (v: View) => {
+    saveView(v);
+    setViewState(v);
+    router.refresh(); // server pages read the cookie too
+  };
 
   const newSession = useCallback(() => {
     if (path === `${base}/live`) setStartSignal((n) => n + 1);
@@ -66,16 +88,24 @@ export function Shell({
         </Link>
 
         <header style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", minWidth: 0 }}>
-          {NAV.map(([k, label], i) => {
+          {NAV[view].map(([k, label], i) => {
             const active = path === `${base}/${k}`;
             return (
               <Link key={k} href={`${base}/${k}`} className="pill hov" style={{ height: 56, padding: "0 24px", background: active ? "var(--cream)" : "var(--card)", color: active ? "var(--card)" : "var(--cream)", display: "flex", alignItems: "center", gap: 10, fontWeight: 600, fontSize: 15 }}>
-                <span style={{ fontSize: 12, fontWeight: 700, opacity: 0.6 }}>0{i + 1}</span>
+                {view === "detailed" && <span style={{ fontSize: 12, fontWeight: 700, opacity: 0.6 }}>0{i + 1}</span>}
                 {label}
               </Link>
             );
           })}
-          <Link href="/profiles" className="hov" style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 14 }} title="Switch profile">
+          <div role="group" aria-label="Dashboard view" style={{ marginLeft: "auto", display: "flex", height: 40, padding: 3, borderRadius: 999, background: "var(--card)", fontSize: 13, fontWeight: 600 }}>
+            {(["simple", "detailed"] as const).map((v) => (
+              <button key={v} onClick={() => view !== v && setView(v)} aria-pressed={view === v} title={v === "simple" ? "Just what you need to practise" : "Full engineering dashboard"}
+                style={{ border: 0, cursor: "pointer", padding: "0 16px", borderRadius: 999, background: view === v ? "var(--cream)" : "transparent", color: view === v ? "var(--card)" : "var(--steel)", transition: "background-color .15s" }}>
+                {v === "simple" ? "Simple" : "Detailed"}
+              </button>
+            ))}
+          </div>
+          <Link href="/profiles" className="hov" style={{ display: "flex", alignItems: "center", gap: 14 }} title="Switch profile">
             <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
               <span style={{ fontWeight: 700, fontSize: 15 }}>
                 {profile.name}
@@ -92,7 +122,7 @@ export function Shell({
           </Link>
         </header>
 
-        <aside style={{ display: "flex", flexDirection: "column", gap: 14, alignItems: "center", paddingTop: 96, position: "sticky", top: 24, alignSelf: "start" }}>
+        {view === "simple" ? <div aria-hidden /> : <aside style={{ display: "flex", flexDirection: "column", gap: 14, alignItems: "center", paddingTop: 96, position: "sticky", top: 24, alignSelf: "start" }}>
           {rail.map(([k, title, dot]) => (
             <div key={k} title={title} className="mono" style={{ position: "relative", width: 56, height: 56, borderRadius: "50%", background: "var(--card)", display: "grid", placeItems: "center", fontSize: 10.5, fontWeight: 600 }}>
               {k}
@@ -103,7 +133,7 @@ export function Shell({
           <button onClick={newSession} title="New session" className="btn btn-accent" style={{ marginTop: 24, width: 56, height: 56, justifyContent: "center", fontSize: 28, fontWeight: 300, padding: 0 }}>
             +
           </button>
-        </aside>
+        </aside>}
 
         <main style={{ display: "flex", flexDirection: "column", gap: 22, minWidth: 0 }}>{children}</main>
       </div>

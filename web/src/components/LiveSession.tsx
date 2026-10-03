@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LEVELS } from "@/lib/scoring";
+import { coachingTip, gradeWord, smoothWord, tremorWord } from "@/lib/coach";
 import { defaultPath, getPath, pathsForLevel, samplePath, type PathDef } from "@/lib/paths";
 import type { RawSample } from "@/lib/types";
 import { saveSimulatedSession } from "@/app/actions";
@@ -52,6 +53,16 @@ function piSend(r: { ws: WebSocket | null }, m: object) {
   if (r.ws && r.ws.readyState === 1) r.ws.send(JSON.stringify(m));
 }
 
+function Tile({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div style={{ flex: "1 1 160px", background: "var(--pill)", borderRadius: 20, padding: "14px 18px", display: "flex", flexDirection: "column", gap: 2 }}>
+      <span style={{ fontSize: 13, color: "var(--steel)", fontWeight: 600 }}>{label}</span>
+      <span className="head" style={{ fontSize: 30, lineHeight: 1.15 }}>{value}</span>
+      {sub && <span style={{ fontSize: 12.5, color: "rgba(242,232,213,.7)" }}>{sub}</span>}
+    </div>
+  );
+}
+
 const CAL = [
   { title: "Strap on the wristband", body: "Fit the band snug just above the wrist bone on your instrument hand, IMU facing up. The Arduino light turns blue once data streams.", btn: "Wristband is on" },
   { title: "Neutral position", body: "Rest your forearm on the pad, palm down, fingers relaxed as if holding a scalpel. This orientation becomes your zero.", btn: "Capture orientation" },
@@ -80,7 +91,8 @@ interface Props {
 
 export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: Props) {
   const router = useRouter();
-  const { setHaptic, setDist, startSignal } = useLive();
+  const { setHaptic, setDist, startSignal, view } = useLive();
+  const simple = view === "simple";
   const [settings, setSettings] = useState<Settings>(DEFAULTS);
   const [phase, setPhaseS] = useState<Phase>(autoStart ? "calib" : "idle");
   const [calStep, setCalStep] = useState(0);
@@ -367,7 +379,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
   // ---- derived UI ----
   const lv = LEVELS[level - 1];
   const phaseLabel = { idle: "ready", calib: "calibrating", run: "recording", done: "complete" }[phase];
-  const primaryLabel = { idle: "Calibrate & start", calib: "Cancel", run: "Stop", done: "New session" }[phase];
+  const primaryLabel = (simple ? { idle: "Start practice", calib: "Cancel", run: "Stop", done: "Practice again" } : { idle: "Calibrate & start", calib: "Cancel", run: "Stop", done: "New session" })[phase];
   const steel = "#5AA4D6", bad = "#E3A857";
   const trend = (v: string, ref: number | undefined, hi: boolean, d = 1) => {
     if (v === "--" || ref === undefined) return { text: ref === undefined && v !== "--" ? "first session" : "▲ vs last", color: steel };
@@ -386,22 +398,22 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
   return (
     <>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap", padding: "8px 0 4px" }}>
-        <h1 className="head" style={{ margin: 0, fontSize: "clamp(34px,4vw,52px)", lineHeight: 1, letterSpacing: "-.01em" }}>Live Session</h1>
+        <h1 className="head" style={{ margin: 0, fontSize: "clamp(34px,4vw,52px)", lineHeight: 1, letterSpacing: "-.01em" }}>{simple ? "Practice" : "Live Session"}</h1>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-          <button className="ctl" onClick={() => setLevel(level % 5 + 1)} disabled={phase === "run"}>
-            <span className="muted">Level:</span><b>L{level} {lv.name}</b><span className="muted" style={{ fontSize: 11 }}>▾</span>
+          <button className="ctl" onClick={() => setLevel(level % (simple ? Math.max(1, startLevel) : 5) + 1)} disabled={phase === "run" || (simple && startLevel <= 1)} title={simple ? (startLevel <= 1 ? "Reach a score of 75 three times to unlock the next exercise" : "Switch exercise") : undefined}>
+            <span className="muted">{simple ? "Exercise:" : "Level:"}</span><b>{simple ? `${lv.name} (level ${level})` : `L${level} ${lv.name}`}</b>{(!simple || startLevel > 1) && <span className="muted" style={{ fontSize: 11 }}>▾</span>}
           </button>
-          <div className="ctl"><span className="muted">Tolerance:</span><b>±{lv.toleranceMm} mm</b></div>
+          <div className="ctl" title={simple ? "How far you can drift from the line before the band buzzes" : undefined}><span className="muted">{simple ? "Allowed wobble:" : "Tolerance:"}</span><b>±{lv.toleranceMm} mm</b></div>
           <button className="btn btn-accent" disabled={settings.source === "pi" && piStatus !== "online"} onClick={() => (phase === "idle" || phase === "done" ? startCalib() : cancel())}>{primaryLabel}</button>
         </div>
       </div>
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: 22, alignItems: "stretch" }}>
-        <div className="card" style={{ flex: "2.4 1 560px", minWidth: 0, paddingBottom: 28, display: "flex", flexDirection: "column", gap: 18 }}>
+        <div className="card" style={{ flex: "2.4 1 560px", minWidth: 0, paddingBottom: 28, display: "flex", flexDirection: "column", gap: 18, ...(simple ? { maxWidth: 1040, width: "100%", margin: "0 auto" } : {}) }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
             <div style={{ display: "flex", alignItems: "baseline", gap: 14, flexWrap: "wrap" }}>
               <span className="card-title">Path trace</span>
-              <span className="mono muted" style={{ fontSize: 12 }}>{phaseLabel} · session #{nextId}{activePath !== defaultPath(level).id && ` · ${getPath(activePath)?.name ?? ""}`}</span>
+              <span className="mono muted" style={{ fontSize: 12 }}>{simple ? phaseLabel.charAt(0).toUpperCase() + phaseLabel.slice(1) : `${phaseLabel} · session #${nextId}`}{activePath !== defaultPath(level).id && ` · ${getPath(activePath)?.name ?? ""}`}</span>
             </div>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               {settings.source === "pi" ? (
@@ -418,6 +430,15 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
             </div>
           </div>
 
+          {simple && phase === "idle" && (
+            <ol style={{ display: "flex", flexWrap: "wrap", gap: 10, margin: 0, padding: 0, listStyle: "none", fontSize: 14 }}>
+              {["Put on the wristband", "Hold still for 5 seconds", "Trace the dashed line — stay inside the band"].map((t, i) => (
+                <li key={t} style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--pill)", borderRadius: 999, padding: "6px 16px 6px 6px" }}>
+                  <span style={{ width: 28, height: 28, borderRadius: "50%", background: "var(--cream)", color: "var(--card)", display: "grid", placeItems: "center", fontWeight: 700, fontSize: 13 }}>{i + 1}</span>{t}
+                </li>
+              ))}
+            </ol>
+          )}
           {error && phase !== "done" && (
             <div role="alert" style={{ padding: "10px 16px", borderRadius: 16, background: "var(--pill)", color: "var(--warn)", fontSize: 13.5 }}>{error}</div>
           )}
@@ -426,7 +447,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
             {hapticOn && phase === "run" && (
               <div className="mono" style={{ position: "absolute", top: 16, right: 16, height: 34, padding: "0 16px", borderRadius: 999, background: "var(--accent)", display: "flex", alignItems: "center", fontSize: 11.5, fontWeight: 600, letterSpacing: ".06em" }}>OFF PATH · VIBRATING</div>
             )}
-            {phase === "idle" && (
+            {phase === "idle" && !simple && (
               <div style={{ position: "absolute", left: 16, bottom: 16, maxWidth: "min(380px,calc(100% - 32px))", padding: "14px 20px", borderRadius: 20, background: "rgba(18,56,45,.94)", display: "flex", flexDirection: "column", gap: 4 }}>
                 <div style={{ fontWeight: 700, fontSize: 15 }}>Trace the dashed path.</div>
                 <div style={{ fontSize: 13, color: "rgba(242,232,213,.75)", lineHeight: 1.45, textWrap: "pretty" }}>Stay inside the blue band. Leaving it vibrates the wristband. Calibration runs first.</div>
@@ -476,7 +497,39 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
                     <button className="btn btn-cream" onClick={startCalib} style={{ alignSelf: "flex-start", height: 46, padding: "0 22px", fontSize: 14 }}>Run again</button>
                   </div>
                 )}
-                {result && (
+                {result && simple && (
+                  <>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      <span className="head muted" style={{ fontSize: 18 }}>Your score</span>
+                      <span className="head" style={{ fontSize: 112, lineHeight: 0.9 }}>{result.score}</span>
+                      <span className="head" style={{ fontSize: 24 }}>{gradeWord(result.score)}</span>
+                      {result.promoted && <span style={{ alignSelf: "flex-start", padding: "4px 14px", borderRadius: 999, background: "var(--cream)", color: "var(--card)", fontWeight: 700, fontSize: 13 }}>New exercise unlocked!</span>}
+                      {result.counted && result.isBest && !result.promoted && <span style={{ alignSelf: "flex-start", padding: "4px 14px", borderRadius: 999, background: "var(--accent)", fontWeight: 700, fontSize: 13 }}>New personal best</span>}
+                      {!result.counted && <span style={{ alignSelf: "flex-start", padding: "4px 14px", borderRadius: 999, background: "var(--pill)", fontSize: 12.5 }}>{result.demo === false ? "Not counted toward your progress" : "Practice run (simulated sensors) — not counted"}</span>}
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 12, flex: "1 1 300px", maxWidth: 520 }}>
+                      {[
+                        ["Stayed on the path", `${result.acc}%`, `You were within ${lv.toleranceMm} mm of the line ${result.acc}% of the time.`],
+                        ["Hand tremor", tremorWord(result.trem), `${result.trem} out of 10 — lower is better.`],
+                        ["Smoothness", smoothWord(result.smooth), `${result.smooth} out of 100 — higher is smoother.`],
+                      ].map(([k, v, d]) => (
+                        <div key={k} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, borderBottom: "1px solid var(--pill)", paddingBottom: 8 }}>
+                          <div><div style={{ fontWeight: 700, fontSize: 15 }}>{k}</div><div style={{ fontSize: 13, color: "rgba(242,232,213,.7)" }}>{d}</div></div>
+                          <div className="head" style={{ fontSize: 20, whiteSpace: "nowrap" }}>{v}</div>
+                        </div>
+                      ))}
+                      <div style={{ fontSize: 14, lineHeight: 1.45 }}>{coachingTip(result.acc, result.trem, result.smooth)}</div>
+                      {result.screening && (
+                        <div style={{ fontSize: 12.5, color: "rgba(242,232,213,.75)" }}>Tremor screening signal: <b style={{ color: "var(--cream)" }}>{Math.round(result.screening.tremorProbability * 100)}%</b> — not a diagnosis.</div>
+                      )}
+                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                        <button className="btn btn-cream" onClick={startCalib} style={{ height: 46, padding: "0 22px", fontSize: 14 }}>Practice again</button>
+                        <button className="btn hov" onClick={() => router.push(`/p/${profileId}/progress`)} style={{ height: 46, padding: "0 22px", fontSize: 14, fontWeight: 600, background: "var(--pill)" }}>See my progress</button>
+                      </div>
+                    </div>
+                  </>
+                )}
+                {result && !simple && (
                   <>
                     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                       <span className="head muted" style={{ fontSize: 18 }}>Session score</span>
@@ -516,8 +569,17 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
           <div style={{ height: 10, borderRadius: 999, background: "var(--pill)", overflow: "hidden" }}>
             <div style={{ height: "100%", width: `${live.pct}%`, background: steel, borderRadius: 999 }} />
           </div>
+          {simple && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+              <Tile label="On the line" value={live.acc === "--" ? "—" : `${live.acc}%`} sub="of the time inside the band" />
+              <Tile label="Hand tremor" value={live.trem === "--" ? "—" : tremorWord(Number(live.trem))} sub={live.trem === "--" ? "lower is better" : `${live.trem} / 10`} />
+              <Tile label="Smoothness" value={live.smooth === "--" ? "—" : smoothWord(Number(live.smooth))} sub={live.smooth === "--" ? "steady, controlled motion" : `${live.smooth} / 100`} />
+              <Tile label="Buzzes" value={String(live.pulses)} sub="times you left the band" />
+            </div>
+          )}
         </div>
 
+        {!simple && (
         <div style={{ flex: "1 1 280px", minWidth: 0, display: "flex", flexDirection: "column", gap: 22 }}>
           {settings.showCamera && (
             <div className="card" style={{ padding: "24px 26px", display: "flex", flexDirection: "column", gap: 14 }}>
@@ -537,8 +599,11 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
             <div className="mono" style={{ background: steel, borderRadius: 16, padding: "14px 16px", fontSize: 15, fontWeight: 600, lineHeight: 1.4, color: "var(--card)", whiteSpace: "pre", letterSpacing: ".06em", overflow: "hidden" }}>{lcd1}{"\n"}{lcd2}</div>
           </div>
         </div>
+        )}
       </div>
 
+      {!simple && (
+      <>
       <div className="row">
         <div className="card" style={{ flex: "1 1 300px", minWidth: 0, paddingBottom: 0, display: "flex", flexDirection: "column", gap: 18, overflow: "hidden" }}>
           <CardHead title="Precision" />
@@ -580,6 +645,9 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
           </div>
         </div>
       </div>
+      </>
+      )}
+      {!simple && (
       <div style={{ display: "flex", justifyContent: "flex-start" }}>
           <details style={{ position: "relative", alignSelf: "flex-start" }}>
             <summary className="ctl" style={{ cursor: "pointer", listStyle: "none" }}><span className="muted">Settings</span> ▾</summary>
@@ -636,6 +704,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
             </div>
           </details>
       </div>
+      )}
     </>
   );
 }

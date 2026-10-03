@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { LEVELS } from "@/lib/scoring";
 
-export function PageHeader({ title, level, children }: { title: string; level?: number; children?: ReactNode }) {
+export function PageHeader({ title, level, simple = false, children }: { title: string; level?: number; simple?: boolean; children?: ReactNode }) {
   const lv = level ? LEVELS[level - 1] : null;
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap", padding: "8px 0 4px" }}>
@@ -10,8 +10,8 @@ export function PageHeader({ title, level, children }: { title: string; level?: 
         {children}
         {lv && (
           <>
-            <div className="ctl"><span className="muted">Level:</span><b>L{lv.level} {lv.name}</b></div>
-            <div className="ctl"><span className="muted">Tolerance:</span><b>±{lv.toleranceMm} mm</b></div>
+            <div className="ctl"><span className="muted">{simple ? "Exercise:" : "Level:"}</span><b>{simple ? `${lv.name} (level ${lv.level})` : `L${lv.level} ${lv.name}`}</b></div>
+            <div className="ctl"><span className="muted">{simple ? "Allowed wobble:" : "Tolerance:"}</span><b>±{lv.toleranceMm} mm</b></div>
           </>
         )}
       </div>

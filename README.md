@@ -36,6 +36,12 @@ accuracy, precision, recall, F1, false-positive rate and inference time per wind
 `models/lgbm.txt` for `infer.py`. Tests (`pytest`) use generated signals only to check the code, never to train.
 Labels: `steady` = 0; `simulated_tremor` / `clinical_tremor` = 1; other labels are skipped.
 
+## Two views
+The site opens in the **Simple** view, built for students: Practice / My Progress / History / Leaderboard, a three-step
+guide, one big Start button, plain-language feedback ("Hand tremor: Mild"), a coaching tip after each run, and unlock
+goals — no raw sensor panels. The **Detailed** toggle (top right, remembered in a cookie) is the full engineering dashboard
+from the design handoff (live IMU/spectrum/LCD, Sessions database with CSV, Scoring model, hardware status).
+
 ## Running it all (local)
 ```
 npm run dev            # website → http://localhost:3000   (installs web/ dependencies on first run)

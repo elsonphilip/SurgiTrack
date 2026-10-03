@@ -1,6 +1,8 @@
 import { notFound } from "next/navigation";
 import { getProfile, listSessions } from "@/lib/store";
-import { consistency } from "@/lib/scoring";
+import { LEVELS, MAX_LEVEL, UNLOCK_COUNT, UNLOCK_SCORE, consistency } from "@/lib/scoring";
+import { coachingTip, gradeWord } from "@/lib/coach";
+import { getView } from "@/lib/view-server";
 import { PageHeader } from "@/components/PageHeader";
 import { BleedLines, CardHead, DotMatrix, LEGEND_DOT, Stat, fmtDate, svgLine } from "@/components/ui";
 
@@ -14,12 +16,13 @@ export default async function Progress({ params }: PageProps<"/p/[id]/progress">
   const profile = await getProfile(id);
   if (!profile) notFound();
   const ss = await listSessions(id, { counted: true });
+  const simple = (await getView()) === "simple";
 
   if (ss.length === 0) {
     return (
       <>
-        <PageHeader title="Progress" level={profile.level} />
-        <div className="empty">No sessions yet. Run one from Live Session and your progress will show up here.</div>
+        <PageHeader title={simple ? "My Progress" : "Progress"} level={profile.level} simple={simple} />
+        <div className="empty">{simple ? "No practice sessions yet. Start one from the Practice tab and your progress will show up here." : "No sessions yet. Run one from Live Session and your progress will show up here."}</div>
       </>
     );
   }
@@ -33,6 +36,65 @@ export default async function Progress({ params }: PageProps<"/p/[id]/progress">
     const bg = isBest ? "#F2E8D5" : s.score >= prev ? "#5AA4D6" : "#1E7D5D";
     return { s, bg, fg: bg === "#1E7D5D" ? "#F2E8D5" : "#12382D", h: Math.round(44 + (Math.max(0, s.score - 55) / 45) * 150) };
   });
+  if (simple) {
+    const need = profile.level < MAX_LEVEL ? UNLOCK_SCORE[profile.level] : null;
+    const have = need ? ss.filter((x) => x.level === profile.level && x.score >= need).length : 0;
+    const change = (delta: number, unit: string) =>
+      Math.abs(delta) < 1 ? { text: "About the same", color: "var(--cream)" }
+        : delta > 0 ? { text: `Better by ${Math.abs(delta).toFixed(0)}${unit}`, color: "var(--steel)" }
+        : { text: `Down by ${Math.abs(delta).toFixed(0)}${unit}`, color: "var(--warn)" };
+    const rows = [
+      ["Stayed on the path", `${last.accuracy.toFixed(0)}%`, change(last.accuracy - first.accuracy, " points")],
+      ["Hand tremor (lower is better)", `${last.tremor.toFixed(1)} / 10`, change((first.tremor - last.tremor) * 10, " points")],
+      ["Smoothness", `${Math.round(last.smoothness)} / 100`, change(last.smoothness - first.smoothness, " points")],
+    ] as const;
+    return (
+      <>
+        <PageHeader title="My Progress" level={profile.level} simple />
+        <div className="row">
+          <div className="card" style={{ flex: "1 1 240px" }}><Stat value={profile.bestScore} label="Best score" /></div>
+          <div className="card" style={{ flex: "1 1 240px" }}><Stat value={gradeWord(last.score)} label={`Latest session: ${last.score}`} /></div>
+          <div className="card" style={{ flex: "1 1 240px" }}><Stat value={ss.length} label={ss.length === 1 ? "Practice session" : "Practice sessions"} /></div>
+        </div>
+        <div className="row">
+          <div className="card" style={{ flex: "1.3 1 520px", minWidth: 0, display: "flex", flexDirection: "column", gap: 20 }}>
+            <CardHead title="Score over time" right={<span className="muted" style={{ fontSize: 13 }}>Beige = new personal best</span>} />
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 4, height: 250, overflowX: "auto" }}>
+              {cols.map(({ s: x, bg, fg, h }) => (
+                <div key={x.id} title={`${new Date(x.date).toLocaleString()} · ${LEVELS[x.level - 1].name}`} style={{ position: "relative", flex: 1, minWidth: 30, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end", gap: 8 }}>
+                  <span style={{ position: "relative", width: 36, height: h, borderRadius: 999, background: bg, color: fg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700 }}>{x.score}</span>
+                  <span style={{ position: "relative", fontSize: 10.5, color: "rgba(242,232,213,.55)", whiteSpace: "nowrap" }}>{fmtDate(x.date)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="card" style={{ flex: "1 1 360px", minWidth: 0, display: "flex", flexDirection: "column", gap: 16 }}>
+            <CardHead title="Since your first session" />
+            {ss.length < 2 ? (
+              <p className="muted" style={{ fontSize: 14.5, lineHeight: 1.5, margin: 0 }}>Practice a couple more times and you’ll see how you’re changing.</p>
+            ) : rows.map(([k, v, c]) => (
+              <div key={k} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, borderBottom: "1px solid var(--pill)", paddingBottom: 10 }}>
+                <div><div style={{ fontWeight: 700, fontSize: 15 }}>{k}</div><div style={{ fontSize: 13, color: c.color }}>{c.text}</div></div>
+                <div className="head" style={{ fontSize: 22, whiteSpace: "nowrap" }}>{v}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="card" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <CardHead title="What to work on" />
+          <p style={{ margin: 0, fontSize: 15, lineHeight: 1.5 }}>{coachingTip(last.accuracy, last.tremor, last.smoothness)}</p>
+          {need ? (
+            <p className="muted" style={{ margin: 0, fontSize: 14.5 }}>
+              Next exercise: score {need}+ on {LEVELS[profile.level - 1].name} {UNLOCK_COUNT} times to unlock {LEVELS[profile.level].name}. You have {Math.min(have, UNLOCK_COUNT)} of {UNLOCK_COUNT}.
+            </p>
+          ) : (
+            <p className="muted" style={{ margin: 0, fontSize: 14.5 }}>You’ve unlocked every exercise.</p>
+          )}
+        </div>
+      </>
+    );
+  }
+
   const timeline = ss.slice(-8).reverse().map((s) => {
     const left = Math.max(0, ((s.accuracy - 50 - s.tremor * 4) / 50) * 100);
     const right = Math.min(100, ((s.accuracy - 50) / 50) * 100);
