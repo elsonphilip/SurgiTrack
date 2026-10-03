@@ -32,14 +32,24 @@ python3 pi/recorder.py --port /dev/ttyACM0 --user u01 --task steady_hold --label
 ```
 Then `python3 pi/train.py` → comparison table + `models/lgbm.txt`. Fit the tremor constant with `tremor.suggest_k`.
 
-## 4. Camera
+## 4. Camera + MediaPipe
 ```
-pip install -r pi/requirements-camera.txt     # opencv-python + mediapipe
+sudo apt install libegl1 libgles2                 # system libraries MediaPipe needs (Raspberry Pi OS / Ubuntu)
+pip install -r pi/requirements-camera.txt         # opencv-python + mediapipe
+python3 pi/camera_check.py --image some_hand_photo.jpg --save out.jpg    # works headless
+python3 pi/camera_check.py --camera 0 --height-cm 14                     # live preview window, press q to quit
 ```
+`pi/camera.py` uses MediaPipe's **HandLandmarker (Tasks API)** and tracks **landmark 8 = index fingertip**. The ~8 MB model
+`hand_landmarker.task` downloads automatically to `models/` the first time (or save it there yourself from
+https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task).
+Older MediaPipe releases (legacy `mp.solutions.hands`) are also supported if `pip install mediapipe` only gives you an old build on the Pi.
+Verified on still photos (finds the hand, landmark 8 lands on the index fingertip, blank image → no hand);
+**not yet verified with a live Pi camera** — check the frame rate in `camera_check.py` (aim for ≥ 15 fps).
+
 Mount the Pi camera pointing straight down at the paper, HC-SR04 next to it pointing down (it reports the height).
 `pi/scale.py` converts pixels → mm assuming the image centre is the middle of the 120 × 60 mm trace area and the Pi Camera v2
-field of view (62.2°). Check with a ruler: move a fingertip 50 mm and compare; adjust `CameraGeometry` (`hfov_deg`, `center_px`, `mirror_x`).
-`pi/camera.py` has never run against a real camera or the current MediaPipe release — expect to adjust it.
+field of view (62.2°). Check with a ruler: move a fingertip 50 mm and compare the printed mm; adjust `CameraGeometry`
+(`hfov_deg`, `center_px`, `mirror_x`). Good lighting and a plain background make the fingertip far steadier.
 
 ## 5. Run everything (all local)
 ```

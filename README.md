@@ -12,7 +12,7 @@ feedback (DRV2605L). A Pi camera + MediaPipe Hands tracks path; the IMU is the p
 - [x] ML pipeline (`pi/train.py`): window features → threshold baseline vs Random Forest vs LightGBM, evaluated on held-out participants
 - [ ] Collect real recordings, then run `python train.py`
 - [x] Pi session engine, simulated rig, WebSocket live feed, uploader, tremor/smoothness formulas (tested; simulated)
-- [x] Camera tracking (MediaPipe) + haptic/HC-SR04 firmware — written, **untested on hardware**
+- [x] MediaPipe fingertip tracking (verified on photos; live camera untested) · haptic/HC-SR04 firmware (**untested on hardware**)
 - [ ] Hardware bring-up, real recordings, fit tremor constants, train model
 
 ## Quick start
@@ -46,7 +46,8 @@ Then in the website: **Live Session → Settings → Data source = Raspberry Pi*
 stored as DEMO data. With real hardware: `python3 pi/server.py --serial /dev/ttyACM0 --camera 0` — see
 [`docs/HARDWARE.md`](docs/HARDWARE.md) for the bring-up checklist and [`docs/PROTOCOL.md`](docs/PROTOCOL.md) for every interface.
 
-First time on the Pi side: `pip install -r pi/requirements.txt` (plus `pi/requirements-camera.txt` for MediaPipe).
+First time on the Pi side: `pip install -r pi/requirements.txt`; for the camera also `sudo apt install libegl1 libgles2` and
+`pip install -r pi/requirements-camera.txt` (MediaPipe hand tracking), then check it with `python3 pi/camera_check.py --camera 0`.
 
 ## Target paths
 27 paths across the 5 levels live in `web/src/lib/paths.ts` (straight/diagonal strokes, arcs and S-curves, a fusiform

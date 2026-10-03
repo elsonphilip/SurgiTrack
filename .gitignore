@@ -2,3 +2,5 @@ __pycache__/
 .pytest_cache/
 *.pyc
 .venv/
+models/hand_landmarker.task
+models/*.part
