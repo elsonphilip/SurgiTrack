@@ -87,3 +87,5 @@ summary.ctl::-webkit-details-marker { display: none; }
 
 /* Sans-serif data text: equal-width digits so changing values (timer, scores) don't jiggle. */
 .mono, .chip, .demo { font-variant-numeric: tabular-nums; }
+
+.btn:disabled { opacity: .45; cursor: not-allowed; transform: none; }

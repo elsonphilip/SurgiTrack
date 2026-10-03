@@ -1,4 +1,6 @@
 import { notFound } from "next/navigation";
+import { promises as fs } from "node:fs";
+import path from "node:path";
 import { getProfile } from "@/lib/store";
 import { PageHeader } from "@/components/PageHeader";
 
@@ -13,18 +15,29 @@ const DEFS = [
   { name: "Overall score", src: "composite", f: "SCORE = .40·ACC + .25·SM + .20·(100 − 10·TRM) + .15·TIME", body: "TIME rewards finishing near the level’s target duration. Weights are a starting point to tune with real data." },
 ];
 
-const CHIPS = [
-  ["Input", "6-ch IMU · 2 s windows"],
-  ["Model", "LightGBM on Pi"],
-  ["Split", "80 / 20 by participant"],
-  ["Classes", "typical · elevated · refer"],
-  ["Test acc.", "pending dataset"],
-];
+/** Held-out result written by pi/train.py (../models/report.json); "pending dataset" until a model is trained. */
+async function testAccuracy(): Promise<string> {
+  try {
+    const r = JSON.parse(await fs.readFile(path.resolve(process.cwd(), "..", "models", "report.json"), "utf8"));
+    const m = r.holdout?.lightgbm;
+    if (!m) return "pending dataset";
+    return `F1 ${m.f1.toFixed(2)} · FPR ${m.false_positive_rate.toFixed(2)} · ${r.n_participants} people`;
+  } catch {
+    return "pending dataset";
+  }
+}
 
 export default async function Scoring({ params }: PageProps<"/p/[id]/scoring">) {
   const { id } = await params;
   const profile = await getProfile(id);
   if (!profile) notFound();
+  const CHIPS = [
+    ["Input", "6-ch IMU · 2 s windows"],
+    ["Model", "LightGBM on Pi"],
+    ["Split", "80 / 20 by participant"],
+    ["Classes", "typical · elevated · refer"],
+    ["Test acc.", await testAccuracy()],
+  ];
   return (
     <>
       <PageHeader title="Scoring Model" level={profile.level} />

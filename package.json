@@ -14,6 +14,8 @@
     "seed:clear": "npm --prefix web run seed:clear",
     "check:paths": "npm --prefix web run check:paths",
     "export:paths": "npm --prefix web run export:paths",
-    "postinstall": "node scripts/ensure-web-deps.mjs"
+    "postinstall": "node scripts/ensure-web-deps.mjs",
+    "pi:sim": "python3 pi/server.py --simulate",
+    "pi:test": "python3 -m pytest pi -q"
   }
 }

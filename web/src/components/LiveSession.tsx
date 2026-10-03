@@ -26,10 +26,11 @@ const EMPTY: Live = { acc: "--", dev: "--", trem: "--", smooth: "--", time: "0.0
 interface Result {
   id: string; score: number; samples: number; counted: boolean; isBest: boolean; prevBest: number; promoted: boolean;
   acc: number; dev: number; trem: number; smooth: number; time: number; pulses: number;
+  screening?: { tremorProbability: number }; demo?: boolean;
 }
 export interface LastSession { acc: number; dev: number; trem: number; smooth: number }
-interface Settings { sessionLength: number; traceStyle: "heat" | "mono"; showTolerance: boolean; showCamera: boolean; pathId: string }
-const DEFAULTS: Settings = { sessionLength: 12, traceStyle: "heat", showTolerance: true, showCamera: true, pathId: "" };
+interface Settings { sessionLength: number; traceStyle: "heat" | "mono"; showTolerance: boolean; showCamera: boolean; pathId: string; source: "sim" | "pi"; piUrl: string }
+const DEFAULTS: Settings = { sessionLength: 12, traceStyle: "heat", showTolerance: true, showCamera: true, pathId: "", source: "sim", piUrl: "ws://localhost:8765" };
 
 /** "" = the level's original design path, "shuffle" = random path from the level each run, else a path id. */
 function resolvePath(level: number, pathId: string, avoidId?: string): PathDef {
@@ -44,6 +45,11 @@ function resolvePath(level: number, pathId: string, avoidId?: string): PathDef {
 function cachePath(r: { settings: Settings; path: PathDef; pts: number[][] }, level: number) {
   r.path = resolvePath(level, r.settings.pathId, r.path.id);
   r.pts = samplePath(r.path, 320);
+}
+
+/** Send a command to the Pi runner (docs/PROTOCOL.md) if connected. */
+function piSend(r: { ws: WebSocket | null }, m: object) {
+  if (r.ws && r.ws.readyState === 1) r.ws.send(JSON.stringify(m));
 }
 
 const CAL = [
@@ -90,13 +96,15 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
   const [result, setResult] = useState<Result | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [piStatus, setPiStatus] = useState<"off" | "online" | "offline">("off");
+  const [piSim, setPiSim] = useState(false);
   const [activePath, setActivePath] = useState(defaultPath(Math.min(Math.max(startLevel, 1), 5)).id);
 
   const cv = useRef<HTMLCanvasElement>(null);
   const R = useRef({
     phase: (autoStart ? "calib" : "idle") as Phase, level, calStep: 0, trace: [] as [number, number, boolean][], pts: [] as number[][], path: defaultPath(Math.min(Math.max(startLevel, 1), 5)),
     acc: { n: 0, in: 0, dev: 0, tr: 0, pulses: 0 }, wasOut: false, hapUntil: 0, t0: 0, m0: 0, lastUi: 0,
-    hx: [] as number[], hy: [] as number[], raw: [] as RawSample[], settings: DEFAULTS, ct: 0 as unknown as ReturnType<typeof setInterval>,
+    hx: [] as number[], hy: [] as number[], raw: [] as RawSample[], settings: DEFAULTS, mode: "sim" as "sim" | "pi", ws: null as WebSocket | null, ct: 0 as unknown as ReturnType<typeof setInterval>,
   });
 
   const setPhase = (p: Phase) => { R.current.phase = p; setPhaseS(p); };
@@ -156,11 +164,20 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
     clearInterval(R.current.ct);
     R.current.trace = [];
     R.current.calStep = 0;
+    if (R.current.mode === "pi") {
+      const r = R.current;
+      if (r.settings.pathId === "shuffle") { cachePath(r, r.level); setActivePath(r.path.id); }
+      piSend(r, { cmd: "set", userId: profileId, level: r.level, pathId: r.path.id, sessionLength: r.settings.sessionLength });
+      piSend(r, { cmd: "calibrate" });
+      setResult(null); setError(null);
+      return;
+    }
     if (R.current.settings.pathId === "shuffle") { cachePath(R.current, R.current.level); setActivePath(R.current.path.id); }
     setCalStep(0); setCalCount(5); setResult(null); setError(null); setLive(EMPTY);
     R.current.phase = "calib"; setPhaseS("calib");
-  }, []);
+  }, [profileId]);
   const calNext = () => {
+    if (R.current.mode === "pi") { piSend(R.current, { cmd: "calib_next" }); return; }
     const s = calStep;
     if (s === 0) { setCalStep(1); R.current.calStep = 1; }
     else if (s === 1) {
@@ -175,6 +192,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
     } else if (s === 3) startRun();
   };
   const cancel = () => {
+    if (R.current.mode === "pi") { piSend(R.current, { cmd: "stop" }); return; }
     clearInterval(R.current.ct);
     R.current.trace = [];
     setPhase("idle"); setLive(EMPTY);
@@ -183,6 +201,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
     if (R.current.phase === "run") return;
     R.current.level = l; cachePath(R.current, l); R.current.trace = [];
     setLevelS(l); setActivePath(R.current.path.id);
+    if (R.current.mode === "pi") piSend(R.current, { cmd: "set", userId: profileId, level: l, pathId: R.current.path.id });
     if (R.current.phase === "done") setPhase("idle");
   };
 
@@ -191,6 +210,63 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
   useEffect(() => {
     if (startSignal !== firstSignal.current) { firstSignal.current = startSignal; startCalib(); }
   }, [startSignal, startCalib]);
+
+  // Raspberry Pi data source: the Pi runner (pi/server.py) streams frames + state over a WebSocket.
+  useEffect(() => {
+    const r = R.current;
+    if (settings.source !== "pi") return;
+    r.mode = "pi";
+    let ws: WebSocket | null = null, closed = false, retry: ReturnType<typeof setTimeout> | undefined;
+    const handle = (m: Record<string, any>) => { // eslint-disable-line @typescript-eslint/no-explicit-any
+      if (m.type === "hello") {
+        setPiStatus("online"); setPiSim(!!m.simulated);
+        piSend(r, { cmd: "set", userId: profileId, level: r.level, pathId: r.path.id, sessionLength: r.settings.sessionLength });
+      } else if (m.type === "state") {
+        r.calStep = m.calStep; setCalStep(m.calStep); setCalCount(m.calCount); setNoise(Number(m.noise).toFixed(3));
+        if (m.phase !== r.phase) {
+          if (m.phase === "run") { r.trace = []; setResult(null); setError(null); }
+          if (m.phase === "idle") { r.trace = []; setLive(EMPTY); }
+          if (m.phase === "done") setSaving(true);
+          setPhase(m.phase);
+        }
+        if (m.level !== r.level) { r.level = m.level; setLevelS(m.level); }
+        const p = getPath(m.pathId);
+        if (p && p.id !== r.path.id) { r.path = p; r.pts = samplePath(p, 320); setActivePath(p.id); }
+      } else if (m.type === "frame") {
+        setImu(m.imu); setSpec(m.spec);
+        r.hx = [...r.hx, m.imu[0]].slice(-60); r.hy = [...r.hy, m.imu[1]].slice(-60);
+        setHx(r.hx); setHy(r.hy);
+        if (m.dist != null) setDist(Number(m.dist).toFixed(1));
+        setHapticOn(!!m.haptic); setHaptic(!!m.haptic);
+        if (m.phase === "run") {
+          setLive({ acc: m.acc == null ? "--" : String(Math.round(m.acc)), dev: m.dev == null ? "--" : Number(m.dev).toFixed(1), trem: Number(m.trem).toFixed(1), smooth: String(m.smooth), time: Number(m.time).toFixed(1), pct: m.pct, pulses: m.pulses });
+          if (m.finger && r.trace.length < 5000) r.trace.push([m.finger[0] * PX, m.finger[1] * PX, !!m.out]);
+        }
+      } else if (m.type === "result") {
+        setSaving(false);
+        if (m.uploaded) {
+          const x = m.metrics;
+          setResult({ id: m.session.id, score: m.session.score, samples: m.samples, counted: !!m.counted, isBest: !!m.isBest, prevBest: m.prevBest ?? 0, promoted: !!m.promoted,
+            acc: x.accuracy, dev: x.avgDeviationMm, trem: x.tremor, smooth: x.smoothness, time: x.completionTimeS, pulses: x.hapticPulses, screening: m.screening ?? undefined, demo: !!m.simulated });
+          setError(null);
+          router.refresh();
+        } else setError(m.error || "Session was not saved");
+      } else if (m.type === "error") setError(m.message);
+    };
+    const connect = () => {
+      try { ws = new WebSocket(settings.piUrl); } catch { setPiStatus("offline"); return; }
+      r.ws = ws;
+      ws.onmessage = (ev) => { try { handle(JSON.parse(ev.data)); } catch {} };
+      ws.onclose = () => { r.ws = null; setPiStatus("offline"); if (!closed) retry = setTimeout(connect, 2000); };
+      ws.onerror = () => ws?.close();
+    };
+    connect();
+    return () => {
+      closed = true; clearTimeout(retry); ws?.close();
+      r.ws = null; r.mode = "sim"; r.phase = "idle"; r.trace = [];
+      setPiStatus("off"); setPhaseS("idle"); setLive(EMPTY); setHapticOn(false); setHaptic(false);
+    };
+  }, [settings.source, settings.piUrl, profileId, router, setHaptic, setDist]);
 
   // Main loop: simulate sensors + draw.
   useEffect(() => {
@@ -243,7 +319,9 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
 
     const tick = () => {
       const now = performance.now(), e = (now - r.m0) / 1000, tol = LEVELS[r.level - 1].toleranceMm;
-      if (r.phase === "run") {
+      if (r.mode === "pi") {
+        // frames arrive over the WebSocket; nothing to simulate
+      } else if (r.phase === "run") {
         const len = r.settings.sessionLength;
         const el = (now - r.t0) / 1000, tt = Math.min(1, el / len);
         const [tx, ty] = r.path.at(tt);
@@ -314,7 +392,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
             <span className="muted">Level:</span><b>L{level} {lv.name}</b><span className="muted" style={{ fontSize: 11 }}>▾</span>
           </button>
           <div className="ctl"><span className="muted">Tolerance:</span><b>±{lv.toleranceMm} mm</b></div>
-          <button className="btn btn-accent" onClick={() => (phase === "idle" || phase === "done" ? startCalib() : cancel())}>{primaryLabel}</button>
+          <button className="btn btn-accent" disabled={settings.source === "pi" && piStatus !== "online"} onClick={() => (phase === "idle" || phase === "done" ? startCalib() : cancel())}>{primaryLabel}</button>
         </div>
       </div>
 
@@ -326,7 +404,13 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
               <span className="mono muted" style={{ fontSize: 12 }}>{phaseLabel} · session #{nextId}{activePath !== defaultPath(level).id && ` · ${getPath(activePath)?.name ?? ""}`}</span>
             </div>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <span className="chip" title="No hardware connected — sensor data is generated in the browser" style={{ color: steel }}>SIMULATED</span>
+              {settings.source === "pi" ? (
+                <span className="chip" title={piStatus === "online" ? (piSim ? "Pi runner is using its simulated rig" : "Live from the Pi runner") : "Pi runner not reachable — start it with: python pi/server.py"} style={{ color: piStatus === "online" ? steel : "var(--warn)" }}>
+                  {piStatus === "online" ? (piSim ? "PI · SIMULATED" : "PI · LIVE") : "PI · OFFLINE"}
+                </span>
+              ) : (
+                <span className="chip" title="No hardware connected — sensor data is generated in the browser" style={{ color: steel }}>SIMULATED</span>
+              )}
               <span className="chip">{live.time}s</span>
               <span className="chip" style={{ background: hapticOn ? "var(--accent)" : "var(--pill)", gap: 8 }}>
                 <span style={{ width: 8, height: 8, borderRadius: "50%", background: hapticOn ? "var(--cream)" : steel }} />haptic × {live.pulses}
@@ -334,6 +418,9 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
             </div>
           </div>
 
+          {error && phase !== "done" && (
+            <div role="alert" style={{ padding: "10px 16px", borderRadius: 16, background: "var(--pill)", color: "var(--warn)", fontSize: 13.5 }}>{error}</div>
+          )}
           <div style={{ position: "relative", borderRadius: 22, overflow: "hidden", background: "var(--canvas)" }}>
             <canvas ref={cv} style={{ display: "block", width: "100%", aspectRatio: "2/1" }} />
             {hapticOn && phase === "run" && (
@@ -395,7 +482,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
                       <span className="head muted" style={{ fontSize: 18 }}>Session score</span>
                       <span className="head" style={{ fontSize: 128, lineHeight: 0.85 }}>{result.score}</span>
                       <span className="mono" style={{ alignSelf: "flex-start", height: 30, padding: "0 14px", borderRadius: 999, background: result.counted && result.isBest ? "var(--accent)" : "var(--pill)", display: "flex", alignItems: "center", fontSize: 11, fontWeight: 600, letterSpacing: ".04em" }}>
-                        {!result.counted ? "SIMULATED · NOT COUNTED" : result.isBest ? "NEW PERSONAL BEST" : `BEST ${result.prevBest} · ${result.score - result.prevBest} PTS`}
+                        {!result.counted ? (result.demo === false ? "NOT COUNTED" : "SIMULATED · NOT COUNTED") : result.isBest ? "NEW PERSONAL BEST" : `BEST ${result.prevBest} · ${result.score - result.prevBest} PTS`}
                       </span>
                       {result.promoted && <span className="mono" style={{ alignSelf: "flex-start", height: 30, padding: "0 14px", borderRadius: 999, background: "var(--cream)", color: "var(--card)", display: "flex", alignItems: "center", fontSize: 11, fontWeight: 700 }}>LEVEL UP</span>}
                     </div>
@@ -409,8 +496,13 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
                         ))}
                       </div>
                       <div className="mono" style={{ fontSize: 11.5, color: "rgba(242,232,213,.6)" }}>
-                        Saved as demo data (simulated feed) · session #{result.id} · {result.samples.toLocaleString()} IMU samples
+                        {result.demo === false ? "Saved to database" : "Saved as demo data (simulated feed)"} · session #{result.id} · {result.samples.toLocaleString()} IMU samples
                       </div>
+                      {result.screening && (
+                        <div style={{ fontSize: 12.5, color: "rgba(242,232,213,.75)" }} title="LightGBM screening over the session — a signal that may prompt a clinical evaluation, not a diagnosis">
+                          Tremor screening signal: <b style={{ color: "var(--cream)" }}>{Math.round(result.screening.tremorProbability * 100)}%</b> · not a diagnosis
+                        </div>
+                      )}
                       <div style={{ display: "flex", gap: 10 }}>
                         <button className="btn btn-cream" onClick={startCalib} style={{ height: 46, padding: "0 22px", fontSize: 14 }}>Run again</button>
                         <button className="btn hov" onClick={() => router.push(`/p/${profileId}/progress`)} style={{ height: 46, padding: "0 22px", fontSize: 14, fontWeight: 600, background: "var(--pill)" }}>View progress</button>
@@ -492,6 +584,20 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
           <details style={{ position: "relative", alignSelf: "flex-start" }}>
             <summary className="ctl" style={{ cursor: "pointer", listStyle: "none" }}><span className="muted">Settings</span> ▾</summary>
             <div style={{ position: "absolute", left: 0, bottom: 58, zIndex: 5, width: 280, background: "var(--card)", border: "1px solid var(--pill)", borderRadius: 20, padding: 18, display: "flex", flexDirection: "column", gap: 12, fontSize: 13.5 }}>
+              <label style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                Data source
+                <select value={settings.source} disabled={phase === "run"} onChange={(e) => setSettings((s) => ({ ...s, source: e.target.value as Settings["source"] }))}
+                  style={{ height: 34, borderRadius: 999, border: 0, background: "var(--pill)", color: "var(--cream)", padding: "0 10px" }}>
+                  <option value="sim">Simulator</option><option value="pi">Raspberry Pi</option>
+                </select>
+              </label>
+              {settings.source === "pi" && (
+                <label style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                  Pi address
+                  <input type="text" value={settings.piUrl} disabled={phase === "run"} spellCheck={false} onChange={(e) => setSettings((s) => ({ ...s, piUrl: e.target.value }))}
+                    style={{ width: 150, height: 34, borderRadius: 999, border: 0, background: "var(--pill)", color: "var(--cream)", padding: "0 12px" }} />
+                </label>
+              )}
               <label style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
                 Session length
                 <input type="number" min={5} max={40} value={settings.sessionLength} disabled={phase === "run"}

@@ -116,6 +116,7 @@ export interface NewSession {
   source: DataSource;
   baseline?: Baseline;
   pathId?: string;
+  screening?: { tremorProbability: number; windows: number };
   raw?: RawSample[];
 }
 
@@ -143,6 +144,7 @@ export async function addSession(input: NewSession) {
       samples: input.raw?.length ?? 0,
       baseline: input.baseline,
       pathId: input.pathId && getPath(input.pathId)?.level === input.level ? input.pathId : undefined,
+      screening: input.screening,
     };
     db.sessions.push(session);
     refresh(db, profile);

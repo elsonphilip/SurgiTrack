@@ -11,7 +11,9 @@ feedback (DRV2605L). A Pi camera + MediaPipe Hands tracks path; the IMU is the p
 - [x] Web app (`web/`): profiles, sessions, leaderboard, 5 progress charts, session API
 - [x] ML pipeline (`pi/train.py`): window features → threshold baseline vs Random Forest vs LightGBM, evaluated on held-out participants
 - [ ] Collect real recordings, then run `python train.py`
-- [ ] MediaPipe path tracking, haptics, Pi → site uploader
+- [x] Pi session engine, simulated rig, WebSocket live feed, uploader, tremor/smoothness formulas (tested; simulated)
+- [x] Camera tracking (MediaPipe) + haptic/HC-SR04 firmware — written, **untested on hardware**
+- [ ] Hardware bring-up, real recordings, fit tremor constants, train model
 
 ## Quick start
 ```
@@ -33,6 +35,18 @@ accuracy, precision, recall, F1, false-positive rate and inference time per wind
 (plus grouped cross-validation). It refuses to run on synthetic data or with fewer than 5 participants, and saves
 `models/lgbm.txt` for `infer.py`. Tests (`pytest`) use generated signals only to check the code, never to train.
 Labels: `steady` = 0; `simulated_tremor` / `clinical_tremor` = 1; other labels are skipped.
+
+## Running it all (local)
+```
+npm run dev            # website → http://localhost:3000   (installs web/ dependencies on first run)
+npm run pi:sim         # Pi runner with a SIMULATED person (no hardware) → ws://localhost:8765
+npm run pi:test        # Python tests (pi/): engine, tremor, paths, ML pipeline, end-to-end WebSocket
+```
+Then in the website: **Live Session → Settings → Data source = Raspberry Pi**. Sessions from the simulated runner are
+stored as DEMO data. With real hardware: `python3 pi/server.py --serial /dev/ttyACM0 --camera 0` — see
+[`docs/HARDWARE.md`](docs/HARDWARE.md) for the bring-up checklist and [`docs/PROTOCOL.md`](docs/PROTOCOL.md) for every interface.
+
+First time on the Pi side: `pip install -r pi/requirements.txt` (plus `pi/requirements-camera.txt` for MediaPipe).
 
 ## Target paths
 27 paths across the 5 levels live in `web/src/lib/paths.ts` (straight/diagonal strokes, arcs and S-curves, a fusiform

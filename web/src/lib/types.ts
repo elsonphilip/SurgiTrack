@@ -44,6 +44,8 @@ export interface Session extends SessionMetrics {
   baseline?: Baseline;
   /** Target path used (see lib/paths.ts). */
   pathId?: string;
+  /** LightGBM tremor screening over the session (a screening signal, not a diagnosis). */
+  screening?: { tremorProbability: number; windows: number };
 }
 
 export interface RawSample {

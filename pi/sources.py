@@ -16,11 +16,11 @@ def serial_source(port, baud=460800):
             if not line or line.startswith("#"):
                 continue
             parts = line.split(",")
-            if len(parts) != 7:
+            if len(parts) < 7:  # 7 fields (IMU) or 8 (IMU + HC-SR04 distance); extra fields are ignored here
                 continue
             try:
                 t_us = int(parts[0])
-                vals = [float(p) for p in parts[1:]]
+                vals = [float(p) for p in parts[1:7]]
             except ValueError:
                 continue
             if t_us < 0 or (t_us >> 32):  # guard against garbage
