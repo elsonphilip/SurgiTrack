@@ -22,7 +22,7 @@
   /* Design v3 fonts (all Google Fonts). To try others, change these three lines. */
   --font-head: "Montserrat", sans-serif;
   --font-body: "Karla", sans-serif;
-  --font-mono: "IBM Plex Mono", monospace;
+  --font-mono: "Karla", sans-serif; /* "mono" role (data, labels, chips) is now a sans; tabular figures keep numbers aligned */
 }
 
 @theme inline {
@@ -84,3 +84,6 @@ summary.ctl::-webkit-details-marker { display: none; }
   .btn, .ctl, .hov, .card-link, .row-hov, .csv-chip { transition: none; }
   .btn:hover, .hov:hover, button.ctl:hover, summary.ctl:hover, .card-link:hover { transform: none; }
 }
+
+/* Sans-serif data text: equal-width digits so changing values (timer, scores) don't jiggle. */
+.mono, .chip, .demo { font-variant-numeric: tabular-nums; }
