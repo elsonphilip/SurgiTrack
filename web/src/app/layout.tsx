@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -9,22 +8,18 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className="h-full antialiased">
-      <body className="min-h-full flex flex-col">
-        <header className="border-b border-line bg-surface">
-          <nav className="mx-auto flex max-w-5xl items-center gap-6 px-4 py-3 text-sm">
-            <Link href="/" className="text-base font-semibold tracking-tight">
-              SurgiTrack
-            </Link>
-            <Link href="/" className="text-ink2 hover:text-ink">Profiles</Link>
-            <Link href="/leaderboard" className="text-ink2 hover:text-ink">Leaderboard</Link>
-          </nav>
-        </header>
-        <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6">{children}</main>
-        <footer className="mx-auto w-full max-w-5xl px-4 py-6 text-xs text-muted">
-          Training tool only. Not a medical device — tremor indicators are not a diagnosis.
-        </footer>
-      </body>
+    <html lang="en">
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+        {/* Brand fonts (Pattanakarn / TT Interphases) are commercial — these are the Google fallbacks. */}
+        {/* eslint-disable-next-line @next/next/no-page-custom-font */}
+        <link
+          href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Hanken+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+          rel="stylesheet"
+        />
+      </head>
+      <body>{children}</body>
     </html>
   );
 }

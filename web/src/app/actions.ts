@@ -1,11 +1,38 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { createProfile } from "@/lib/store";
+import { addSession, createProfile } from "@/lib/store";
+import { validateMetrics, MAX_LEVEL } from "@/lib/scoring";
+import type { Baseline, RawSample, SessionMetrics } from "@/lib/types";
 
 export async function createProfileAction(formData: FormData) {
   const name = String(formData.get("name") ?? "");
   if (!name.trim()) return;
   const p = await createProfile(name);
-  redirect(`/profiles/${p.id}`);
+  redirect(`/p/${p.id}/live`);
+}
+
+/**
+ * Save a session recorded by the in-browser SIMULATOR. Always stored as source:"synthetic"
+ * (demo data) — real sessions come in through POST /api/sessions from the Pi.
+ */
+export async function saveSimulatedSession(input: {
+  userId: string;
+  level: number;
+  metrics: SessionMetrics;
+  baseline: Baseline;
+  raw: RawSample[];
+}) {
+  if (!validateMetrics(input.metrics) || !Number.isInteger(input.level) || input.level < 1 || input.level > MAX_LEVEL) {
+    throw new Error("Invalid session");
+  }
+  const r = await addSession({
+    userId: String(input.userId),
+    level: input.level,
+    metrics: input.metrics,
+    baseline: input.baseline,
+    raw: Array.isArray(input.raw) ? input.raw.slice(0, 20000) : undefined,
+    source: "synthetic",
+  });
+  return { id: r.session.id, score: r.session.score, samples: r.session.samples, counted: r.counted, isBest: r.isBest, prevBest: r.prevBest, promoted: r.promoted };
 }
