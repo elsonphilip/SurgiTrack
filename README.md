@@ -34,6 +34,15 @@ accuracy, precision, recall, F1, false-positive rate and inference time per wind
 `models/lgbm.txt` for `infer.py`. Tests (`pytest`) use generated signals only to check the code, never to train.
 Labels: `steady` = 0; `simulated_tremor` / `clinical_tremor` = 1; other labels are skipped.
 
+## Train the model (no Pi needed)
+```
+python3 pi/collect.py --port <PORT> --check     # is the wristband streaming properly?
+python3 pi/collect.py --port <PORT> --user p01  # guided recordings for one participant (repeat for ≥5 people)
+python3 pi/inventory.py                         # do we have enough data?
+python3 pi/train.py                             # baseline vs Random Forest vs LightGBM → models/lgbm.txt
+```
+Full walkthrough and caveats: [`docs/TRAINING.md`](docs/TRAINING.md).
+
 ## Look & feel
 Palette (`web/src/app/globals.css`): page `#0f1015`, panels `#21211f`, pale-teal text `#a6cac8`, muted-green accent `#3d8571`,
 logo blue `#5aa4d6` for secondary data, amber `#e3a857` for warnings. First open per browser session shows a ~3.6 s splash

@@ -30,7 +30,7 @@ def serial_source(port, baud=460800):
             yield ((t_us - t0_us) / 1e6, *vals)
 
 
-def simulated_source(rate_hz=200, tremor_hz=0.0, tremor_amp_g=0.0, seed=0):
+def simulated_source(rate_hz=200, tremor_hz=0.0, tremor_amp_g=0.0, seed=0, realtime=True):
     """FAKE data for testing the pipeline without hardware. Never save into data/raw."""
     import random
 
@@ -49,4 +49,5 @@ def simulated_source(rate_hz=200, tremor_hz=0.0, tremor_amp_g=0.0, seed=0):
             rng.gauss(0, 0.2),
         )
         t += dt
-        time.sleep(dt)
+        if realtime:
+            time.sleep(dt)

@@ -30,6 +30,19 @@ def record(source, seconds, path):
     return n
 
 
+def record_session(source, src_kind, out_dir, user, task, label, seconds):
+    """Record one labelled session to out_dir as CSV + JSON metadata. Returns (csv_path, meta)."""
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    stamp = time.strftime("%Y%m%d_%H%M%S")
+    stem = f"{user}_{task}_{label}_{stamp}"
+    n = record(source, seconds, out_dir / f"{stem}.csv")
+    meta = {"user": user, "task": task, "label": label, "source": src_kind, "seconds": seconds, "n_samples": n,
+            "nominal_rate_hz": 200, "sensor": "BMI270", "units": {"accel": "g", "gyro": "deg/s"}, "recorded": stamp}
+    (out_dir / f"{stem}.json").write_text(json.dumps(meta, indent=2))
+    return out_dir / f"{stem}.csv", meta
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--port")
@@ -51,15 +64,8 @@ def main():
             p.error("--port required (or use --simulate)")
         out_dir, source, src_kind = RAW_DIR, serial_source(a.port), "device"
 
-    out_dir.mkdir(parents=True, exist_ok=True)
-    stamp = time.strftime("%Y%m%d_%H%M%S")
-    stem = f"{a.user}_{a.task}_{a.label}_{stamp}"
-    n = record(source, a.seconds, out_dir / f"{stem}.csv")
-    meta = {"user": a.user, "task": a.task, "label": a.label, "source": src_kind,
-            "seconds": a.seconds, "n_samples": n, "nominal_rate_hz": 200,
-            "sensor": "BMI270", "units": {"accel": "g", "gyro": "deg/s"}, "recorded": stamp}
-    (out_dir / f"{stem}.json").write_text(json.dumps(meta, indent=2))
-    print(f"Wrote {n} samples to {out_dir / (stem + '.csv')}")
+    path, meta = record_session(source, src_kind, out_dir, a.user, a.task, a.label, a.seconds)
+    print(f"Wrote {meta['n_samples']} samples to {path}")
 
 
 if __name__ == "__main__":
