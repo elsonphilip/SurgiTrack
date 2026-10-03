@@ -1,0 +1,19 @@
+{
+  "name": "surgitrack",
+  "private": true,
+  "description": "Run the SurgiTrack website from the repo root. The app itself lives in web/.",
+  "scripts": {
+    "predev": "node scripts/ensure-web-deps.mjs",
+    "dev": "npm --prefix web run dev",
+    "prestart": "node scripts/ensure-web-deps.mjs",
+    "start": "npm --prefix web run dev",
+    "prebuild": "node scripts/ensure-web-deps.mjs",
+    "build": "npm --prefix web run build",
+    "lint": "npm --prefix web run lint",
+    "seed:demo": "npm --prefix web run seed:demo",
+    "seed:clear": "npm --prefix web run seed:clear",
+    "check:paths": "npm --prefix web run check:paths",
+    "export:paths": "npm --prefix web run export:paths",
+    "postinstall": "node scripts/ensure-web-deps.mjs"
+  }
+}

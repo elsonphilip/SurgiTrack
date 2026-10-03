@@ -49,7 +49,7 @@ The Pi uses `pi/paths.py` (`deviation_mm`, `accuracy_pct`) against the same shap
 Next.js, custom SVG/canvas charts, JSON-file storage in `web/data/` (gitignored). UI follows the design handoff
 (5 screens: Live Session, Progress, Sessions, Leaderboard, Scoring).
 ```
-cd web && npm install && npm run dev
+npm run dev          # from the repo root — installs web/ dependencies automatically on first run
 npm run seed:demo    # optional demo profiles/sessions (flagged synthetic, shown with a DEMO badge)
 npm run seed:clear   # remove all synthetic data; real data is untouched
 ```
