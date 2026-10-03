@@ -48,11 +48,11 @@ export function Shell({
 
   const initials = profile.name.split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
   // No hardware is connected yet: the feed is simulated, so status dots are dim rather than "ok".
-  const dim = "rgba(253,240,213,.25)";
+  const dim = "rgba(242,232,213,.25)";
   const rail = [
     ["R4", "Arduino R4 WiFi (simulated)", dim],
     ["IMU", "BMI270 (simulated)", dim],
-    ["HPT", "DRV2605L haptic (simulated)", haptic ? "var(--red)" : dim],
+    ["HPT", "DRV2605L haptic (simulated)", haptic ? "var(--accent)" : dim],
     ["CAM", "Pi Camera (simulated)", dim],
     ["SR04", "HC-SR04 distance (simulated)", dim],
   ];
@@ -60,8 +60,9 @@ export function Shell({
   return (
     <Ctx.Provider value={ctx}>
       <div style={{ minHeight: "100vh", padding: "24px clamp(16px,2.4vw,32px) 40px", display: "grid", gridTemplateColumns: "64px minmax(0,1fr)", gap: "20px 28px", alignContent: "start" }}>
-        <Link href="/profiles" title="All profiles" className="head hov" style={{ width: 64, height: 64, borderRadius: "50%", background: "var(--cream)", color: "var(--card)", display: "grid", placeItems: "center", fontSize: 22, letterSpacing: "-.02em" }}>
-          ST
+        <Link href="/profiles" title="All profiles" className="hov" style={{ width: 64, height: 64, borderRadius: "50%", background: "#FFFFFF", overflow: "hidden", display: "grid", placeItems: "center" }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.png" alt="SurgiTrack" style={{ width: "92%", height: "auto", display: "block" }} />
         </Link>
 
         <header style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", minWidth: 0 }}>
@@ -69,7 +70,7 @@ export function Shell({
             const active = path === `${base}/${k}`;
             return (
               <Link key={k} href={`${base}/${k}`} className="pill hov" style={{ height: 56, padding: "0 24px", background: active ? "var(--cream)" : "var(--card)", color: active ? "var(--card)" : "var(--cream)", display: "flex", alignItems: "center", gap: 10, fontWeight: 600, fontSize: 15 }}>
-                <span className="mono" style={{ fontSize: 11, opacity: 0.6 }}>0{i + 1}</span>
+                <span style={{ fontSize: 12, fontWeight: 700, opacity: 0.6 }}>0{i + 1}</span>
                 {label}
               </Link>
             );
@@ -82,9 +83,9 @@ export function Shell({
               </span>
               <span className="mono muted" style={{ fontSize: 12 }}>{profile.id}</span>
             </div>
-            <div className="head" style={{ position: "relative", width: 60, height: 60, borderRadius: "50%", background: "var(--red-dark)", display: "grid", placeItems: "center", fontSize: 18 }}>
+            <div className="head" style={{ position: "relative", width: 60, height: 60, borderRadius: "50%", background: "var(--accent-dark)", display: "grid", placeItems: "center", fontSize: 18 }}>
               {initials}
-              <span className="mono" style={{ position: "absolute", top: -2, right: -4, height: 22, minWidth: 22, padding: "0 6px", borderRadius: 999, background: "var(--red)", border: "2px solid var(--bg)", display: "grid", placeItems: "center", fontSize: 10, fontWeight: 600 }}>
+              <span className="mono" style={{ position: "absolute", top: -2, right: -4, height: 22, minWidth: 22, padding: "0 6px", borderRadius: 999, background: "var(--accent)", border: "2px solid var(--bg)", display: "grid", placeItems: "center", fontSize: 10, fontWeight: 600 }}>
                 L{profile.level}
               </span>
             </div>
@@ -99,7 +100,7 @@ export function Shell({
             </div>
           ))}
           <div className="mono muted" style={{ fontSize: 10, lineHeight: 1.4, textAlign: "center" }}>{dist}<br />cm</div>
-          <button onClick={newSession} title="New session" className="btn btn-red" style={{ marginTop: 24, width: 56, height: 56, justifyContent: "center", fontSize: 28, fontWeight: 300, padding: 0 }}>
+          <button onClick={newSession} title="New session" className="btn btn-accent" style={{ marginTop: 24, width: 56, height: 56, justifyContent: "center", fontSize: 28, fontWeight: 300, padding: 0 }}>
             +
           </button>
         </aside>

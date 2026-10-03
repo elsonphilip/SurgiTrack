@@ -50,7 +50,7 @@ const CAL = [
 ];
 const CAL_LABELS = ["Wristband on", "Neutral position", "Hold still · 5 s", "Baseline locked"];
 const IMU_K = ["ax g", "ay g", "az g", "gx °/s", "gy °/s", "gz °/s"];
-const OFF = "rgba(253,240,213,.08)";
+const OFF = "rgba(242,232,213,.08)";
 
 function imuSample(a: number) {
   return [0.01 + rnd() * 0.08 * a, -0.02 + rnd() * 0.08 * a, 0.998 + rnd() * 0.01, rnd() * 12 * a, rnd() * 12 * a, rnd() * 6 * a];
@@ -207,27 +207,27 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
       const g = c.getContext("2d");
       if (!g) return;
       g.setTransform(dpr, 0, 0, dpr, 0, 0);
-      g.fillStyle = "#00243A"; g.fillRect(0, 0, W, H);
-      g.fillStyle = "rgba(102,155,188,.16)";
+      g.fillStyle = "#0E3027"; g.fillRect(0, 0, W, H);
+      g.fillStyle = "rgba(90,164,214,.16)";
       for (let x = 20; x < W; x += 40) for (let y = 20; y < H; y += 40) { g.beginPath(); g.arc(x, y, 1.4, 0, 7); g.fill(); }
       const tol = LEVELS[r.level - 1].toleranceMm, P = r.pts;
       const path = () => { g.beginPath(); P.forEach((p, i) => (i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]))); };
       g.lineCap = "round"; g.lineJoin = "round";
-      if (r.settings.showTolerance) { path(); g.strokeStyle = "rgba(102,155,188,.24)"; g.lineWidth = tol * 2 * PX; g.stroke(); }
-      path(); g.setLineDash([7, 8]); g.strokeStyle = "rgba(253,240,213,.55)"; g.lineWidth = 1.6; g.stroke(); g.setLineDash([]);
+      if (r.settings.showTolerance) { path(); g.strokeStyle = "rgba(90,164,214,.24)"; g.lineWidth = tol * 2 * PX; g.stroke(); }
+      path(); g.setLineDash([7, 8]); g.strokeStyle = "rgba(242,232,213,.55)"; g.lineWidth = 1.6; g.stroke(); g.setLineDash([]);
       const s = P[0], f = P[P.length - 1];
-      g.fillStyle = "#669BBC"; g.beginPath(); g.arc(s[0], s[1], 8, 0, 7); g.fill();
-      g.strokeStyle = "#FDF0D5"; g.lineWidth = 3; g.beginPath(); g.arc(f[0], f[1], 8, 0, 7); g.stroke();
+      g.fillStyle = "#5AA4D6"; g.beginPath(); g.arc(s[0], s[1], 8, 0, 7); g.fill();
+      g.strokeStyle = "#F2E8D5"; g.lineWidth = 3; g.beginPath(); g.arc(f[0], f[1], 8, 0, 7); g.stroke();
       const T = r.trace, heat = r.settings.traceStyle === "heat";
       g.lineWidth = 2.6;
       for (let i = 1; i < T.length; i++) {
-        g.strokeStyle = heat && T[i][2] ? "#F2404F" : "#FDF0D5";
+        g.strokeStyle = heat && T[i][2] ? "#E3A857" : "#F2E8D5";
         g.beginPath(); g.moveTo(T[i - 1][0], T[i - 1][1]); g.lineTo(T[i][0], T[i][1]); g.stroke();
       }
       if (T.length && r.phase === "run") {
         const p = T[T.length - 1], hot = now < r.hapUntil;
-        if (hot) { const rr = 12 + ((now / 12) % 24); g.strokeStyle = `rgba(190,17,34,${1 - (rr - 12) / 24})`; g.lineWidth = 3; g.beginPath(); g.arc(p[0], p[1], rr, 0, 7); g.stroke(); }
-        g.fillStyle = hot ? "#BE1122" : "#FDF0D5"; g.beginPath(); g.arc(p[0], p[1], 7, 0, 7); g.fill();
+        if (hot) { const rr = 12 + ((now / 12) % 24); g.strokeStyle = `rgba(36,147,110,${1 - (rr - 12) / 24})`; g.lineWidth = 3; g.beginPath(); g.arc(p[0], p[1], rr, 0, 7); g.stroke(); }
+        g.fillStyle = hot ? "#1E7D5D" : "#F2E8D5"; g.beginPath(); g.arc(p[0], p[1], 7, 0, 7); g.fill();
       }
     };
 
@@ -280,7 +280,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
   const lv = LEVELS[level - 1];
   const phaseLabel = { idle: "ready", calib: "calibrating", run: "recording", done: "complete" }[phase];
   const primaryLabel = { idle: "Calibrate & start", calib: "Cancel", run: "Stop", done: "New session" }[phase];
-  const steel = "#669BBC", bad = "#F2404F";
+  const steel = "#5AA4D6", bad = "#E3A857";
   const trend = (v: string, ref: number | undefined, hi: boolean, d = 1) => {
     if (v === "--" || ref === undefined) return { text: ref === undefined && v !== "--" ? "first session" : "▲ vs last", color: steel };
     const up = +v >= ref, good = hi ? up : !up;
@@ -289,7 +289,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
   const pk = spec.indexOf(Math.max(...spec)) + 1;
   const specCols = spec.map((h, i) => ({
     lit: Math.max(1, Math.round((h / 100) * 6)),
-    color: i + 1 === pk && h > 40 ? "#BE1122" : i >= 3 && i <= 11 ? "#669BBC" : "#FDF0D5",
+    color: i + 1 === pk && h > 40 ? "#1E7D5D" : i >= 3 && i <= 11 ? "#5AA4D6" : "#F2E8D5",
   }));
   const lcd1 = ("SCR " + pad(phase === "done" && result ? result.score : "--", 3) + " ACC" + pad(live.acc, 3) + "%").padEnd(16).slice(0, 16);
   const lcd2 = ("TRM" + pad(live.trem, 4) + " DEV" + pad(live.dev, 4)).padEnd(16).slice(0, 16);
@@ -326,7 +326,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
             <span className="muted">Level:</span><b>L{level} {lv.name}</b><span className="muted" style={{ fontSize: 11 }}>▾</span>
           </button>
           <div className="ctl"><span className="muted">Tolerance:</span><b>±{lv.toleranceMm} mm</b></div>
-          <button className="btn btn-red" onClick={() => (phase === "idle" || phase === "done" ? startCalib() : cancel())}>{primaryLabel}</button>
+          <button className="btn btn-accent" onClick={() => (phase === "idle" || phase === "done" ? startCalib() : cancel())}>{primaryLabel}</button>
         </div>
       </div>
 
@@ -340,7 +340,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <span className="chip" title="No hardware connected — sensor data is generated in the browser" style={{ color: steel }}>SIMULATED</span>
               <span className="chip">{live.time} s</span>
-              <span className="chip" style={{ background: hapticOn ? "var(--red)" : "var(--pill)", gap: 8 }}>
+              <span className="chip" style={{ background: hapticOn ? "var(--accent)" : "var(--pill)", gap: 8 }}>
                 <span style={{ width: 8, height: 8, borderRadius: "50%", background: hapticOn ? "var(--cream)" : steel }} />haptic × {live.pulses}
               </span>
             </div>
@@ -349,30 +349,30 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
           <div style={{ position: "relative", borderRadius: 22, overflow: "hidden", background: "var(--canvas)" }}>
             <canvas ref={cv} style={{ display: "block", width: "100%", aspectRatio: "2/1" }} />
             {hapticOn && phase === "run" && (
-              <div className="mono" style={{ position: "absolute", top: 16, right: 16, height: 34, padding: "0 16px", borderRadius: 999, background: "var(--red)", display: "flex", alignItems: "center", fontSize: 11.5, fontWeight: 600, letterSpacing: ".06em" }}>OFF PATH · VIBRATING</div>
+              <div className="mono" style={{ position: "absolute", top: 16, right: 16, height: 34, padding: "0 16px", borderRadius: 999, background: "var(--accent)", display: "flex", alignItems: "center", fontSize: 11.5, fontWeight: 600, letterSpacing: ".06em" }}>OFF PATH · VIBRATING</div>
             )}
             {phase === "idle" && (
-              <div style={{ position: "absolute", left: 16, bottom: 16, maxWidth: "min(380px,calc(100% - 32px))", padding: "14px 20px", borderRadius: 20, background: "rgba(0,46,72,.94)", display: "flex", flexDirection: "column", gap: 4 }}>
+              <div style={{ position: "absolute", left: 16, bottom: 16, maxWidth: "min(380px,calc(100% - 32px))", padding: "14px 20px", borderRadius: 20, background: "rgba(18,56,45,.94)", display: "flex", flexDirection: "column", gap: 4 }}>
                 <div style={{ fontWeight: 700, fontSize: 15 }}>Trace the dashed path.</div>
-                <div style={{ fontSize: 13, color: "rgba(253,240,213,.75)", lineHeight: 1.45 }}>Stay inside the blue band. Leaving it vibrates the wristband. Calibration runs first.</div>
+                <div style={{ fontSize: 13, color: "rgba(242,232,213,.75)", lineHeight: 1.45 }}>Stay inside the blue band. Leaving it vibrates the wristband. Calibration runs first.</div>
               </div>
             )}
             {phase === "calib" && (
-              <div style={{ position: "absolute", inset: 0, background: "rgba(0,36,58,.96)", display: "flex", flexWrap: "wrap", gap: "24px 36px", alignItems: "center", padding: "28px 32px", overflow: "auto" }}>
+              <div style={{ position: "absolute", inset: 0, background: "rgba(14,48,39,.96)", display: "flex", flexWrap: "wrap", gap: "24px 36px", alignItems: "center", padding: "28px 32px", overflow: "auto" }}>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: "0 0 210px" }}>
                   {CAL_LABELS.map((label, i) => {
                     const done = i < calStep, act = i === calStep;
                     return (
                       <div key={label} style={{ height: 44, padding: "0 16px 0 6px", borderRadius: 999, background: act ? "var(--pill)" : "transparent", display: "flex", alignItems: "center", gap: 12 }}>
-                        <span className="mono" style={{ width: 32, height: 32, borderRadius: "50%", display: "grid", placeItems: "center", fontSize: 11, fontWeight: 600, background: done ? steel : act ? "var(--cream)" : "var(--pill)", color: done || act ? "var(--card)" : "rgba(253,240,213,.55)" }}>{done ? "✓" : i + 1}</span>
-                        <span style={{ fontSize: 13.5, fontWeight: 600, color: done || act ? "var(--cream)" : "rgba(253,240,213,.55)" }}>{label}</span>
+                        <span className="mono" style={{ width: 32, height: 32, borderRadius: "50%", display: "grid", placeItems: "center", fontSize: 11, fontWeight: 600, background: done ? steel : act ? "var(--cream)" : "var(--pill)", color: done || act ? "var(--card)" : "rgba(242,232,213,.55)" }}>{done ? "✓" : i + 1}</span>
+                        <span style={{ fontSize: 13.5, fontWeight: 600, color: done || act ? "var(--cream)" : "rgba(242,232,213,.55)" }}>{label}</span>
                       </div>
                     );
                   })}
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 14, flex: "1 1 260px", maxWidth: 420 }}>
                   <div className="head" style={{ fontSize: 30, lineHeight: 1.05 }}>{cal.title}</div>
-                  <div style={{ fontSize: 14.5, lineHeight: 1.5, color: "rgba(253,240,213,.8)" }}>{cal.body}</div>
+                  <div style={{ fontSize: 14.5, lineHeight: 1.5, color: "rgba(242,232,213,.8)" }}>{cal.body}</div>
                   {calStep === 2 && (
                     <div style={{ display: "flex", alignItems: "baseline", gap: 14 }}>
                       <span className="head" style={{ fontSize: 80, lineHeight: 1 }}>{calCount}</span>
@@ -393,7 +393,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
               </div>
             )}
             {phase === "done" && (
-              <div style={{ position: "absolute", inset: 0, background: "rgba(0,36,58,.96)", display: "flex", flexWrap: "wrap", alignItems: "center", gap: "24px 44px", padding: "28px 36px", overflow: "auto" }}>
+              <div style={{ position: "absolute", inset: 0, background: "rgba(14,48,39,.96)", display: "flex", flexWrap: "wrap", alignItems: "center", gap: "24px 44px", padding: "28px 36px", overflow: "auto" }}>
                 {saving && <div className="mono muted" style={{ fontSize: 13 }}>Saving session…</div>}
                 {error && (
                   <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -406,7 +406,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
                     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                       <span className="head muted" style={{ fontSize: 18 }}>Session score</span>
                       <span className="head" style={{ fontSize: 128, lineHeight: 0.85 }}>{result.score}</span>
-                      <span className="mono" style={{ alignSelf: "flex-start", height: 30, padding: "0 14px", borderRadius: 999, background: result.counted && result.isBest ? "var(--red)" : "var(--pill)", display: "flex", alignItems: "center", fontSize: 11, fontWeight: 600, letterSpacing: ".04em" }}>
+                      <span className="mono" style={{ alignSelf: "flex-start", height: 30, padding: "0 14px", borderRadius: 999, background: result.counted && result.isBest ? "var(--accent)" : "var(--pill)", display: "flex", alignItems: "center", fontSize: 11, fontWeight: 600, letterSpacing: ".04em" }}>
                         {!result.counted ? "SIMULATED · NOT COUNTED" : result.isBest ? "NEW PERSONAL BEST" : `BEST ${result.prevBest} · ${result.score - result.prevBest} PTS`}
                       </span>
                       {result.promoted && <span className="mono" style={{ alignSelf: "flex-start", height: 30, padding: "0 14px", borderRadius: 999, background: "var(--cream)", color: "var(--card)", display: "flex", alignItems: "center", fontSize: 11, fontWeight: 700 }}>LEVEL UP</span>}
@@ -420,7 +420,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
                           </span>
                         ))}
                       </div>
-                      <div className="mono" style={{ fontSize: 11.5, color: "rgba(253,240,213,.6)" }}>
+                      <div className="mono" style={{ fontSize: 11.5, color: "rgba(242,232,213,.6)" }}>
                         Saved as demo data (simulated feed) · session #{result.id} · {result.samples.toLocaleString()} IMU samples
                       </div>
                       <div style={{ display: "flex", gap: 10 }}>
@@ -443,11 +443,11 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
             <div className="card" style={{ padding: "24px 26px", display: "flex", flexDirection: "column", gap: 14 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <span className="card-title sm">Pi camera</span>
-                <span className="mono" style={{ height: 26, padding: "0 10px", borderRadius: 999, background: "var(--red)", display: "flex", alignItems: "center", gap: 6, fontSize: 10, fontWeight: 600 }}>
+                <span className="mono" style={{ height: 26, padding: "0 10px", borderRadius: 999, background: "var(--accent)", display: "flex", alignItems: "center", gap: 6, fontSize: 10, fontWeight: 600 }}>
                   <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--cream)" }} />REC
                 </span>
               </div>
-              <div style={{ aspectRatio: "4/3", borderRadius: 20, background: "repeating-linear-gradient(135deg,#0B3B59 0 10px,#0E4264 10px 20px)", display: "grid", placeItems: "center" }}>
+              <div style={{ aspectRatio: "4/3", borderRadius: 20, background: "repeating-linear-gradient(135deg,#1B4638 0 10px,#22503F 10px 20px)", display: "grid", placeItems: "center" }}>
                 <span className="mono muted" style={{ fontSize: 11, lineHeight: 1.6, textAlign: "center" }}>camera feed<br />+ mediapipe landmarks</span>
               </div>
             </div>
@@ -466,7 +466,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
             <Stat value={`${live.acc}%`} label="Accuracy" trend={trend(live.acc, last?.acc, true)} />
             <Stat value={live.dev} label="Deviation, mm" trend={trend(live.dev, last?.dev, false)} />
           </div>
-          <BleedLines lines={[{ path: line(hx, 300, 80, -0.09, 0.09), color: "#BE1122" }, { path: line(hy, 300, 80, -0.09, 0.09), color: "#669BBC" }]} />
+          <BleedLines lines={[{ path: line(hx, 300, 80, -0.09, 0.09), color: "#1E7D5D" }, { path: line(hy, 300, 80, -0.09, 0.09), color: "#5AA4D6" }]} />
         </div>
 
         <div className="card" style={{ flex: "1 1 300px", minWidth: 0, paddingBottom: 0, display: "flex", flexDirection: "column", gap: 18, overflow: "hidden" }}>
@@ -495,8 +495,8 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
             ))}
           </div>
           <div style={{ display: "flex", gap: 18, marginTop: "auto", fontSize: 13, fontWeight: 600, flexWrap: "wrap" }}>
-            <span style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ width: 12, height: 12, borderRadius: "50%", border: "3px solid #BE1122" }} />Accel X</span>
-            <span style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ width: 12, height: 12, borderRadius: "50%", border: "3px solid #669BBC" }} />Accel Y</span>
+            <span style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ width: 12, height: 12, borderRadius: "50%", border: "3px solid #1E7D5D" }} />Accel X</span>
+            <span style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ width: 12, height: 12, borderRadius: "50%", border: "3px solid #5AA4D6" }} />Accel Y</span>
           </div>
         </div>
       </div>

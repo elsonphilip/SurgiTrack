@@ -11,7 +11,8 @@ export default async function Profiles() {
   return (
     <div style={{ maxWidth: 960, margin: "0 auto", padding: "32px 24px", display: "flex", flexDirection: "column", gap: 22 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
-        <div className="head" style={{ width: 64, height: 64, borderRadius: "50%", background: "var(--cream)", color: "var(--card)", display: "grid", placeItems: "center", fontSize: 22 }}>ST</div>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <div style={{ width: 64, height: 64, borderRadius: "50%", background: "#FFFFFF", overflow: "hidden", display: "grid", placeItems: "center" }}><img src="/logo.png" alt="SurgiTrack" style={{ width: "92%", height: "auto", display: "block" }} /></div>
         <h1 className="head" style={{ margin: 0, fontSize: "clamp(34px,4vw,52px)", lineHeight: 1 }}>Profiles</h1>
       </div>
 
@@ -23,7 +24,7 @@ export default async function Profiles() {
           placeholder="Name"
           style={{ flex: "1 1 220px", height: 52, padding: "0 22px", borderRadius: 999, border: 0, background: "var(--pill)", color: "var(--cream)", fontSize: 14.5 }}
         />
-        <button className="btn btn-red">Create profile</button>
+        <button className="btn btn-accent">Create profile</button>
       </form>
 
       {profiles.length === 0 ? (

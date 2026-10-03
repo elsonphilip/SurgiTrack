@@ -3,22 +3,23 @@
 /* Brand tokens (design handoff). Dark-only by design. */
 :root {
   color-scheme: dark;
-  --bg: #001b2e;
-  --card: #002e48;
-  --pill: #0b3b59;
-  --pill-hover: #0e4264;
-  --canvas: #00243a;
-  --cream: #fdf0d5;
-  --steel: #669bbc;
-  --red: #be1122;
-  --red-dark: #730000;
-  --red-text: #f2404f;
-  --grid: rgba(253, 240, 213, 0.08);
-  /* Headings: Placard Next (commercial, must be installed locally); falls back through Placard variants,
-     the old brand font, then Chakra Petch. Body: Helvetica, falling back to system sans. */
-  --font-head: "Placard Next", "Placard MT", "Placard Condensed", "Pattanakarn", "Chakra Petch", sans-serif;
-  --font-body: "Helvetica Neue", Helvetica, Arial, sans-serif;
-  --font-mono: "TT Interphases Mono", "IBM Plex Mono", monospace;
+  /* Palette from the SurgiTrack logo (design v3): dark greens, blue, beige. Token names are
+     roles, not hues: --accent = primary buttons/haptic/"dropped"/L3+, --warn = off-path + worse-than-last. */
+  --bg: #0b2a22;
+  --card: #12382d;
+  --pill: #1b4638;
+  --pill-hover: #22503f;
+  --canvas: #0e3027;
+  --cream: #f2e8d5; /* beige: primary text, active nav, "best" */
+  --steel: #5aa4d6; /* blue: secondary text, labels, charts, "improved" */
+  --accent: #1e7d5d;
+  --accent-dark: #0f5f8f; /* deep logo blue: button hover, avatar */
+  --warn: #e3a857; /* amber: the only warning color */
+  --grid: rgba(242, 232, 213, 0.08);
+  /* Design v3 fonts (all Google Fonts). To try others, change these three lines. */
+  --font-head: "Montserrat", sans-serif;
+  --font-body: "Karla", sans-serif;
+  --font-mono: "IBM Plex Mono", monospace;
 }
 
 @theme inline {
@@ -38,18 +39,18 @@ body {
 button { font: inherit; }
 a { color: inherit; text-decoration: none; }
 
-.head { font-family: var(--font-head); font-weight: 700; text-transform: uppercase; }
+.head { font-family: var(--font-head); font-weight: 800; text-transform: uppercase; }
 .mono { font-family: var(--font-mono); }
 .card { background: var(--card); border-radius: 32px; padding: 26px 28px; }
-.card-title { font-family: var(--font-head); font-weight: 700; font-size: 21px; text-transform: uppercase; }
+.card-title { font-family: var(--font-head); font-weight: 800; font-size: 21px; text-transform: uppercase; }
 .card-title.sm { font-size: 19px; }
-.big { font-family: var(--font-head); font-weight: 700; font-size: 48px; line-height: 1; white-space: nowrap; }
+.big { font-family: var(--font-head); font-weight: 800; font-size: 48px; line-height: 1; white-space: nowrap; }
 .stat-label { font-size: 13px; font-weight: 600; }
 .muted { color: var(--steel); }
 .pill { border-radius: 999px; }
 .btn { cursor: pointer; transition: background-color .15s, filter .15s, transform .15s; border: 0; color: inherit; border-radius: 999px; display: inline-flex; align-items: center; font-weight: 700; }
-.btn-red { background: var(--red); height: 52px; padding: 0 26px; font-size: 14.5px; }
-.btn-red:hover { background: var(--red-dark); }
+.btn-accent { background: var(--accent); height: 52px; padding: 0 26px; font-size: 14.5px; }
+.btn-accent:hover { background: var(--accent-dark); }
 .btn-cream { background: var(--cream); color: var(--card); }
 .btn-cream:hover { background: var(--steel); }
 .hov:hover { filter: brightness(1.15); }
@@ -65,7 +66,7 @@ button.ctl:hover { background: var(--pill); }
 .btn, .ctl, .hov, .card-link, .row-hov, .csv-chip { transition: background-color .15s ease, filter .15s ease, transform .15s ease, border-color .15s ease; }
 .btn:hover, .hov:hover { transform: translateY(-1px); }
 .btn:active, .hov:active, button.ctl:active, summary.ctl:active { transform: translateY(0) scale(.97); }
-.btn-red:hover { background: var(--red-dark); filter: none; }
+.btn-accent:hover { background: var(--accent-dark); filter: none; }
 .hov:hover { filter: brightness(1.18); }
 button.ctl:hover, summary.ctl:hover { background: var(--pill); transform: translateY(-1px); }
 button.ctl:disabled { opacity: .5; cursor: not-allowed; transform: none; }
