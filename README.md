@@ -1,8 +1,8 @@
 # SurgiTrack
 
 Wrist-worn hand-stability trainer for med students / novice surgeons. A BMI270 IMU (via Arduino R4 WiFi)
-streams motion to a Raspberry Pi, which scores tremor, smoothness and path deviation and drives haptic
-feedback (DRV2605L). A Pi camera + MediaPipe Hands tracks path; the IMU is the primary tremor source
+streams motion to a computer processor, which scores the tremor, smoothness and path deviation while also driving haptic
+feedback back to the user (DRV2605L). A Pi camera + MediaPipe Hands tracks path; the IMU is the primary tremor source
 (a 30 fps camera can't resolve 4–12 Hz tremor reliably).
 
 ## Status
