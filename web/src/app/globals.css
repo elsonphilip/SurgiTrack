@@ -14,8 +14,10 @@
   --red-dark: #730000;
   --red-text: #f2404f;
   --grid: rgba(253, 240, 213, 0.08);
-  --font-head: "Pattanakarn", "Chakra Petch", sans-serif;
-  --font-body: "TT Interphases", "Hanken Grotesk", sans-serif;
+  /* Headings: Placard Next (commercial, must be installed locally); falls back through Placard variants,
+     the old brand font, then Chakra Petch. Body: Helvetica, falling back to system sans. */
+  --font-head: "Placard Next", "Placard MT", "Placard Condensed", "Pattanakarn", "Chakra Petch", sans-serif;
+  --font-body: "Helvetica Neue", Helvetica, Arial, sans-serif;
   --font-mono: "TT Interphases Mono", "IBM Plex Mono", monospace;
 }
 
@@ -45,7 +47,7 @@ a { color: inherit; text-decoration: none; }
 .stat-label { font-size: 13px; font-weight: 600; }
 .muted { color: var(--steel); }
 .pill { border-radius: 999px; }
-.btn { cursor: pointer; border: 0; color: inherit; border-radius: 999px; display: inline-flex; align-items: center; font-weight: 700; }
+.btn { cursor: pointer; transition: background-color .15s, filter .15s, transform .15s; border: 0; color: inherit; border-radius: 999px; display: inline-flex; align-items: center; font-weight: 700; }
 .btn-red { background: var(--red); height: 52px; padding: 0 26px; font-size: 14.5px; }
 .btn-red:hover { background: var(--red-dark); }
 .btn-cream { background: var(--cream); color: var(--card); }
@@ -58,3 +60,23 @@ button.ctl:hover { background: var(--pill); }
 .empty { background: var(--card); border-radius: 32px; padding: 40px 28px; color: var(--steel); font-size: 14.5px; line-height: 1.5; }
 .row { display: flex; flex-wrap: wrap; gap: 22px; }
 .demo { margin-left: 8px; height: 18px; padding: 0 8px; border-radius: 999px; background: var(--pill); color: var(--steel); font: 600 9.5px var(--font-mono); letter-spacing: 0.08em; display: inline-flex; align-items: center; vertical-align: middle; }
+
+/* ---- Hover / focus / press feedback ---- */
+.btn, .ctl, .hov, .card-link, .row-hov, .csv-chip { transition: background-color .15s ease, filter .15s ease, transform .15s ease, border-color .15s ease; }
+.btn:hover, .hov:hover { transform: translateY(-1px); }
+.btn:active, .hov:active, button.ctl:active, summary.ctl:active { transform: translateY(0) scale(.97); }
+.btn-red:hover { background: var(--red-dark); filter: none; }
+.hov:hover { filter: brightness(1.18); }
+button.ctl:hover, summary.ctl:hover { background: var(--pill); transform: translateY(-1px); }
+button.ctl:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+summary.ctl { cursor: pointer; }
+summary.ctl::-webkit-details-marker { display: none; }
+.card-link:hover { background: var(--pill); transform: translateY(-2px); }
+.row-hov { background: var(--pill); }
+.row-hov:hover { background: var(--pill-hover); }
+.csv-chip:hover { background: var(--cream) !important; color: var(--card) !important; }
+:focus-visible { outline: 2px solid var(--cream); outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) {
+  .btn, .ctl, .hov, .card-link, .row-hov, .csv-chip { transition: none; }
+  .btn:hover, .hov:hover, button.ctl:hover, summary.ctl:hover, .card-link:hover { transform: none; }
+}

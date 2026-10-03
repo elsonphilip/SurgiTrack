@@ -29,7 +29,7 @@ export default async function Sessions({ params }: PageProps<"/p/[id]/sessions">
           {ss.map((s) => {
             const isBest = s.score === profile.bestScore && s.source === profile.source;
             return (
-              <div key={s.id} className="mono" style={{ display: "grid", gridTemplateColumns: GRID, gap: 10, alignItems: "center", height: 60, padding: "0 10px 0 6px", borderRadius: 999, background: "var(--pill)", fontSize: 13, fontWeight: 500, minWidth: 820 }}>
+              <div key={s.id} className="mono row-hov" style={{ display: "grid", gridTemplateColumns: GRID, gap: 10, alignItems: "center", height: 60, padding: "0 10px 0 6px", borderRadius: 999, fontSize: 13, fontWeight: 500, minWidth: 820 }}>
                 <span className="head" style={{ width: 48, height: 48, borderRadius: "50%", background: isBest ? "var(--cream)" : "var(--card)", color: isBest ? "var(--card)" : "var(--cream)", display: "grid", placeItems: "center", fontSize: 17 }}>{s.score}</span>
                 <span>{fmtDate(s.date)}{s.source === "synthetic" && <Demo />}</span>
                 <span>L{s.level}</span>
@@ -38,7 +38,7 @@ export default async function Sessions({ params }: PageProps<"/p/[id]/sessions">
                 <span>{Math.round(s.smoothness)}</span>
                 <span>{s.avgDeviationMm.toFixed(2)} mm</span>
                 {s.hasRaw ? (
-                  <a href={`/api/sessions/${s.id}/csv`} download style={{ justifySelf: "end", height: 38, padding: "0 16px", borderRadius: 999, background: "var(--card)", display: "flex", alignItems: "center", fontSize: 11.5, color: "var(--steel)" }}>
+                  <a href={`/api/sessions/${s.id}/csv`} download className="csv-chip" style={{ justifySelf: "end", height: 38, padding: "0 16px", borderRadius: 999, background: "var(--card)", display: "flex", alignItems: "center", fontSize: 11.5, color: "var(--steel)" }}>
                     {s.samples.toLocaleString()} · csv
                   </a>
                 ) : (

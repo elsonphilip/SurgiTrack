@@ -60,7 +60,7 @@ export function Shell({
   return (
     <Ctx.Provider value={ctx}>
       <div style={{ minHeight: "100vh", padding: "24px clamp(16px,2.4vw,32px) 40px", display: "grid", gridTemplateColumns: "64px minmax(0,1fr)", gap: "20px 28px", alignContent: "start" }}>
-        <Link href="/profiles" title="All profiles" className="head" style={{ width: 64, height: 64, borderRadius: "50%", background: "var(--cream)", color: "var(--card)", display: "grid", placeItems: "center", fontSize: 22, letterSpacing: "-.02em" }}>
+        <Link href="/profiles" title="All profiles" className="head hov" style={{ width: 64, height: 64, borderRadius: "50%", background: "var(--cream)", color: "var(--card)", display: "grid", placeItems: "center", fontSize: 22, letterSpacing: "-.02em" }}>
           ST
         </Link>
 
@@ -74,7 +74,7 @@ export function Shell({
               </Link>
             );
           })}
-          <Link href="/profiles" style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 14 }} title="Switch profile">
+          <Link href="/profiles" className="hov" style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 14 }} title="Switch profile">
             <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
               <span style={{ fontWeight: 700, fontSize: 15 }}>
                 {profile.name}
@@ -99,7 +99,7 @@ export function Shell({
             </div>
           ))}
           <div className="mono muted" style={{ fontSize: 10, lineHeight: 1.4, textAlign: "center" }}>{dist}<br />cm</div>
-          <button onClick={newSession} title="New session" className="btn" style={{ marginTop: 24, width: 56, height: 56, justifyContent: "center", background: "var(--red)", fontSize: 28, fontWeight: 300, padding: 0 }}>
+          <button onClick={newSession} title="New session" className="btn btn-red" style={{ marginTop: 24, width: 56, height: 56, justifyContent: "center", fontSize: 28, fontWeight: 300, padding: 0 }}>
             +
           </button>
         </aside>
