@@ -6,19 +6,20 @@
 /* Brand tokens (design handoff). Dark-only by design. */
 :root {
   color-scheme: dark;
-  /* Palette from the SurgiTrack logo (design v3): dark greens, blue, beige. Token names are
-     roles, not hues: --accent = primary buttons/haptic/"dropped"/L3+, --warn = off-path + worse-than-last. */
-  --bg: #0b2a22;
-  --card: #12382d;
-  --pill: #1b4638;
-  --pill-hover: #22503f;
-  --canvas: #0e3027;
-  --cream: #f2e8d5; /* beige: primary text, active nav, "best" */
-  --steel: #5aa4d6; /* blue: secondary text, labels, charts, "improved" */
-  --accent: #1e7d5d;
-  --accent-dark: #0f5f8f; /* deep logo blue: button hover, avatar */
+  /* SurgiTrack palette: near-black page, warm charcoal panels, pale teal text, muted green accent (+ the logo's blue).
+     Token names are roles, not hues: --accent = primary buttons / haptic / "dropped" / L3+, --warn = off-path + worse-than-last. */
+  --bg: #0f1015;
+  --card: #21211f;
+  --pill: #2c2c2a;
+  --pill-hover: #363634;
+  --canvas: #181816;
+  --cream: #a6cac8; /* pale teal: primary text, active nav, "best" */
+  --steel: #5aa4d6; /* logo blue: secondary text, labels, charts, "improved" */
+  --accent: #3d8571; /* muted green */
+  --accent-dark: #2e6a59; /* button hover, avatar */
+  --on-accent: #f1f7f6; /* text on green surfaces (pale teal is too low-contrast on it) */
   --warn: #e3a857; /* amber: the only warning color */
-  --grid: rgba(242, 232, 213, 0.08);
+  --grid: rgba(166, 202, 200, 0.08);
   /* Design v3 fonts (all Google Fonts). To try others, change these three lines. */
   --font-head: "Montserrat", sans-serif;
   --font-body: "Karla", sans-serif;
@@ -89,3 +90,24 @@ summary.ctl::-webkit-details-marker { display: none; }
 .mono, .chip, .demo { font-variant-numeric: tabular-nums; }
 
 .btn:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+
+/* Legible text on green surfaces (buttons, badges, chips) */
+.btn-accent, [style*="background: var(--accent)"], [style*="background: var(--accent-dark)"] { color: var(--on-accent); }
+
+/* ---- Opening splash ---- */
+@keyframes st-rise { from { opacity: 0; transform: translateY(28px); } to { opacity: 1; transform: none; } }
+@keyframes st-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes st-bar { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.splash { position: fixed; inset: 0; z-index: 9999; background: var(--bg); padding: clamp(12px, 2.5vw, 32px); display: flex; cursor: pointer; transition: opacity 0.5s ease; }
+.splash.leaving { opacity: 0; pointer-events: none; }
+.splash-panel { position: relative; flex: 1; border-radius: 32px; background: var(--card); overflow: hidden; display: flex; flex-direction: column; justify-content: center; gap: clamp(8px, 1.6vw, 20px); padding: clamp(24px, 6vw, 96px); }
+.splash-logo { width: clamp(72px, 9vw, 128px); height: auto; align-self: flex-start; animation: st-fade 0.9s 0.1s both; }
+.splash-word { margin: 0; display: flex; flex-direction: column; font-size: clamp(64px, 15vw, 210px); line-height: 0.88; letter-spacing: -0.03em; }
+.splash-a { animation: st-rise 0.8s 0.35s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+.splash-b { animation: st-rise 0.8s 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+.splash-quote { margin: clamp(8px, 1.5vw, 20px) 0 0; font-size: clamp(18px, 2.2vw, 30px); font-weight: 600; letter-spacing: 0.01em; color: rgba(166, 202, 200, 0.85); animation: st-fade 0.9s 1.5s both; }
+.splash-skip { position: absolute; right: clamp(16px, 3vw, 40px); bottom: 24px; font-size: 12.5px; color: rgba(166, 202, 200, 0.45); animation: st-fade 0.6s 1.5s both; }
+.splash-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 6px; background: var(--accent); transform-origin: left; animation: st-bar 3.6s linear both; }
+@media (prefers-reduced-motion: reduce) {
+  .splash-logo, .splash-a, .splash-b, .splash-quote, .splash-skip { animation: none; }
+}

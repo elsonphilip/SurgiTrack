@@ -58,7 +58,7 @@ function Tile({ label, value, sub }: { label: string; value: string; sub?: strin
     <div style={{ flex: "1 1 160px", background: "var(--pill)", borderRadius: 20, padding: "14px 18px", display: "flex", flexDirection: "column", gap: 2 }}>
       <span style={{ fontSize: 13, color: "var(--steel)", fontWeight: 600 }}>{label}</span>
       <span className="head" style={{ fontSize: 30, lineHeight: 1.15 }}>{value}</span>
-      {sub && <span style={{ fontSize: 12.5, color: "rgba(242,232,213,.7)" }}>{sub}</span>}
+      {sub && <span style={{ fontSize: 12.5, color: "rgba(166,202,200,.7)" }}>{sub}</span>}
     </div>
   );
 }
@@ -71,7 +71,7 @@ const CAL = [
 ];
 const CAL_LABELS = ["Wristband on", "Neutral position", "Hold still · 5 s", "Baseline locked"];
 const IMU_K = ["ax g", "ay g", "az g", "gx °/s", "gy °/s", "gz °/s"];
-const OFF = "rgba(242,232,213,.08)";
+const OFF = "rgba(166,202,200,.08)";
 
 function imuSample(a: number) {
   return [0.01 + rnd() * 0.08 * a, -0.02 + rnd() * 0.08 * a, 0.998 + rnd() * 0.01, rnd() * 12 * a, rnd() * 12 * a, rnd() * 6 * a];
@@ -305,27 +305,27 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
       const g = c.getContext("2d");
       if (!g) return;
       g.setTransform(dpr, 0, 0, dpr, 0, 0);
-      g.fillStyle = "#0E3027"; g.fillRect(0, 0, W, H);
+      g.fillStyle = "#181816"; g.fillRect(0, 0, W, H);
       g.fillStyle = "rgba(90,164,214,.16)";
       for (let x = 20; x < W; x += 40) for (let y = 20; y < H; y += 40) { g.beginPath(); g.arc(x, y, 1.4, 0, 7); g.fill(); }
       const tol = LEVELS[r.level - 1].toleranceMm, P = r.pts;
       const path = () => { g.beginPath(); P.forEach((p, i) => (i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]))); };
       g.lineCap = "round"; g.lineJoin = "round";
       if (r.settings.showTolerance) { path(); g.strokeStyle = "rgba(90,164,214,.24)"; g.lineWidth = tol * 2 * PX; g.stroke(); }
-      path(); g.setLineDash([7, 8]); g.strokeStyle = "rgba(242,232,213,.55)"; g.lineWidth = 1.6; g.stroke(); g.setLineDash([]);
+      path(); g.setLineDash([7, 8]); g.strokeStyle = "rgba(166,202,200,.55)"; g.lineWidth = 1.6; g.stroke(); g.setLineDash([]);
       const s = P[0], f = P[P.length - 1];
       g.fillStyle = "#5AA4D6"; g.beginPath(); g.arc(s[0], s[1], 8, 0, 7); g.fill();
-      g.strokeStyle = "#F2E8D5"; g.lineWidth = 3; g.beginPath(); g.arc(f[0], f[1], 8, 0, 7); g.stroke();
+      g.strokeStyle = "#A6CAC8"; g.lineWidth = 3; g.beginPath(); g.arc(f[0], f[1], 8, 0, 7); g.stroke();
       const T = r.trace, heat = r.settings.traceStyle === "heat";
       g.lineWidth = 2.6;
       for (let i = 1; i < T.length; i++) {
-        g.strokeStyle = heat && T[i][2] ? "#E3A857" : "#F2E8D5";
+        g.strokeStyle = heat && T[i][2] ? "#E3A857" : "#A6CAC8";
         g.beginPath(); g.moveTo(T[i - 1][0], T[i - 1][1]); g.lineTo(T[i][0], T[i][1]); g.stroke();
       }
       if (T.length && r.phase === "run") {
         const p = T[T.length - 1], hot = now < r.hapUntil;
-        if (hot) { const rr = 12 + ((now / 12) % 24); g.strokeStyle = `rgba(36,147,110,${1 - (rr - 12) / 24})`; g.lineWidth = 3; g.beginPath(); g.arc(p[0], p[1], rr, 0, 7); g.stroke(); }
-        g.fillStyle = hot ? "#1E7D5D" : "#F2E8D5"; g.beginPath(); g.arc(p[0], p[1], 7, 0, 7); g.fill();
+        if (hot) { const rr = 12 + ((now / 12) % 24); g.strokeStyle = `rgba(61,133,113,${1 - (rr - 12) / 24})`; g.lineWidth = 3; g.beginPath(); g.arc(p[0], p[1], rr, 0, 7); g.stroke(); }
+        g.fillStyle = hot ? "#3D8571" : "#A6CAC8"; g.beginPath(); g.arc(p[0], p[1], 7, 0, 7); g.fill();
       }
     };
 
@@ -389,7 +389,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
   const pk = spec.indexOf(Math.max(...spec)) + 1;
   const specCols = spec.map((h, i) => ({
     lit: Math.max(1, Math.round((h / 100) * 6)),
-    color: i + 1 === pk && h > 40 ? "#1E7D5D" : i >= 3 && i <= 11 ? "#5AA4D6" : "#F2E8D5",
+    color: i + 1 === pk && h > 40 ? "#3D8571" : i >= 3 && i <= 11 ? "#5AA4D6" : "#A6CAC8",
   }));
   const lcd1 = ("SCR " + pad(phase === "done" && result ? result.score : "--", 3) + " ACC" + pad(live.acc, 3) + "%").padEnd(16).slice(0, 16);
   const lcd2 = ("TRM" + pad(live.trem, 4) + " DEV" + pad(live.dev, 4)).padEnd(16).slice(0, 16);
@@ -448,27 +448,27 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
               <div className="mono" style={{ position: "absolute", top: 16, right: 16, height: 34, padding: "0 16px", borderRadius: 999, background: "var(--accent)", display: "flex", alignItems: "center", fontSize: 11.5, fontWeight: 600, letterSpacing: ".06em" }}>OFF PATH · VIBRATING</div>
             )}
             {phase === "idle" && !simple && (
-              <div style={{ position: "absolute", left: 16, bottom: 16, maxWidth: "min(380px,calc(100% - 32px))", padding: "14px 20px", borderRadius: 20, background: "rgba(18,56,45,.94)", display: "flex", flexDirection: "column", gap: 4 }}>
+              <div style={{ position: "absolute", left: 16, bottom: 16, maxWidth: "min(380px,calc(100% - 32px))", padding: "14px 20px", borderRadius: 20, background: "rgba(33,33,31,.94)", display: "flex", flexDirection: "column", gap: 4 }}>
                 <div style={{ fontWeight: 700, fontSize: 15 }}>Trace the dashed path.</div>
-                <div style={{ fontSize: 13, color: "rgba(242,232,213,.75)", lineHeight: 1.45, textWrap: "pretty" }}>Stay inside the blue band. Leaving it vibrates the wristband. Calibration runs first.</div>
+                <div style={{ fontSize: 13, color: "rgba(166,202,200,.75)", lineHeight: 1.45, textWrap: "pretty" }}>Stay inside the blue band. Leaving it vibrates the wristband. Calibration runs first.</div>
               </div>
             )}
             {phase === "calib" && (
-              <div style={{ position: "absolute", inset: 0, background: "rgba(14,48,39,.96)", display: "flex", flexWrap: "wrap", gap: "24px 36px", alignItems: "center", padding: "28px 32px", overflow: "auto" }}>
+              <div style={{ position: "absolute", inset: 0, background: "rgba(24,24,22,.96)", display: "flex", flexWrap: "wrap", gap: "24px 36px", alignItems: "center", padding: "28px 32px", overflow: "auto" }}>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: "0 0 210px" }}>
                   {CAL_LABELS.map((label, i) => {
                     const done = i < calStep, act = i === calStep;
                     return (
                       <div key={label} style={{ height: 44, padding: "0 16px 0 6px", borderRadius: 999, background: act ? "var(--pill)" : "transparent", display: "flex", alignItems: "center", gap: 12 }}>
-                        <span className="mono" style={{ width: 32, height: 32, borderRadius: "50%", display: "grid", placeItems: "center", fontSize: 11, fontWeight: 600, background: done ? steel : act ? "var(--cream)" : "var(--pill)", color: done || act ? "var(--card)" : "rgba(242,232,213,.55)" }}>{done ? "✓" : i + 1}</span>
-                        <span style={{ fontSize: 13.5, fontWeight: 600, color: done || act ? "var(--cream)" : "rgba(242,232,213,.55)" }}>{label}</span>
+                        <span className="mono" style={{ width: 32, height: 32, borderRadius: "50%", display: "grid", placeItems: "center", fontSize: 11, fontWeight: 600, background: done ? steel : act ? "var(--cream)" : "var(--pill)", color: done || act ? "var(--card)" : "rgba(166,202,200,.55)" }}>{done ? "✓" : i + 1}</span>
+                        <span style={{ fontSize: 13.5, fontWeight: 600, color: done || act ? "var(--cream)" : "rgba(166,202,200,.55)" }}>{label}</span>
                       </div>
                     );
                   })}
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 14, flex: "1 1 260px", maxWidth: 420 }}>
                   <div className="head" style={{ fontSize: 30, lineHeight: 1.05 }}>{cal.title}</div>
-                  <div style={{ fontSize: 14.5, lineHeight: 1.5, color: "rgba(242,232,213,.8)", textWrap: "pretty" }}>{cal.body}</div>
+                  <div style={{ fontSize: 14.5, lineHeight: 1.5, color: "rgba(166,202,200,.8)", textWrap: "pretty" }}>{cal.body}</div>
                   {calStep === 2 && (
                     <div style={{ display: "flex", alignItems: "baseline", gap: 14 }}>
                       <span className="head" style={{ fontSize: 80, lineHeight: 1 }}>{calCount}</span>
@@ -489,7 +489,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
               </div>
             )}
             {phase === "done" && (
-              <div style={{ position: "absolute", inset: 0, background: "rgba(14,48,39,.96)", display: "flex", flexWrap: "wrap", alignItems: "center", gap: "24px 44px", padding: "28px 36px", overflow: "auto" }}>
+              <div style={{ position: "absolute", inset: 0, background: "rgba(24,24,22,.96)", display: "flex", flexWrap: "wrap", alignItems: "center", gap: "24px 44px", padding: "28px 36px", overflow: "auto" }}>
                 {saving && <div className="mono muted" style={{ fontSize: 13 }}>Saving session…</div>}
                 {error && (
                   <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -514,13 +514,13 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
                         ["Smoothness", smoothWord(result.smooth), `${result.smooth} out of 100 — higher is smoother.`],
                       ].map(([k, v, d]) => (
                         <div key={k} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, borderBottom: "1px solid var(--pill)", paddingBottom: 8 }}>
-                          <div><div style={{ fontWeight: 700, fontSize: 15 }}>{k}</div><div style={{ fontSize: 13, color: "rgba(242,232,213,.7)" }}>{d}</div></div>
+                          <div><div style={{ fontWeight: 700, fontSize: 15 }}>{k}</div><div style={{ fontSize: 13, color: "rgba(166,202,200,.7)" }}>{d}</div></div>
                           <div className="head" style={{ fontSize: 20, whiteSpace: "nowrap" }}>{v}</div>
                         </div>
                       ))}
                       <div style={{ fontSize: 14, lineHeight: 1.45 }}>{coachingTip(result.acc, result.trem, result.smooth)}</div>
                       {result.screening && (
-                        <div style={{ fontSize: 12.5, color: "rgba(242,232,213,.75)" }}>Tremor screening signal: <b style={{ color: "var(--cream)" }}>{Math.round(result.screening.tremorProbability * 100)}%</b> — not a diagnosis.</div>
+                        <div style={{ fontSize: 12.5, color: "rgba(166,202,200,.75)" }}>Tremor screening signal: <b style={{ color: "var(--cream)" }}>{Math.round(result.screening.tremorProbability * 100)}%</b> — not a diagnosis.</div>
                       )}
                       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                         <button className="btn btn-cream" onClick={startCalib} style={{ height: 46, padding: "0 22px", fontSize: 14 }}>Practice again</button>
@@ -548,11 +548,11 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
                           </span>
                         ))}
                       </div>
-                      <div className="mono" style={{ fontSize: 11.5, color: "rgba(242,232,213,.6)" }}>
+                      <div className="mono" style={{ fontSize: 11.5, color: "rgba(166,202,200,.6)" }}>
                         {result.demo === false ? "Saved to database" : "Saved as demo data (simulated feed)"} · session #{result.id} · {result.samples.toLocaleString()} IMU samples
                       </div>
                       {result.screening && (
-                        <div style={{ fontSize: 12.5, color: "rgba(242,232,213,.75)" }} title="LightGBM screening over the session — a signal that may prompt a clinical evaluation, not a diagnosis">
+                        <div style={{ fontSize: 12.5, color: "rgba(166,202,200,.75)" }} title="LightGBM screening over the session — a signal that may prompt a clinical evaluation, not a diagnosis">
                           Tremor screening signal: <b style={{ color: "var(--cream)" }}>{Math.round(result.screening.tremorProbability * 100)}%</b> · not a diagnosis
                         </div>
                       )}
@@ -589,7 +589,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
                   <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--cream)" }} />REC
                 </span>
               </div>
-              <div style={{ aspectRatio: "4/3", borderRadius: 20, background: "repeating-linear-gradient(135deg,#1B4638 0 10px,#22503F 10px 20px)", display: "grid", placeItems: "center" }}>
+              <div style={{ aspectRatio: "4/3", borderRadius: 20, background: "repeating-linear-gradient(135deg,#2C2C2A 0 10px,#363634 10px 20px)", display: "grid", placeItems: "center" }}>
                 <span className="mono muted" style={{ fontSize: 11, lineHeight: 1.6, textAlign: "center" }}>camera feed<br />+ mediapipe landmarks</span>
               </div>
             </div>
@@ -611,7 +611,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
             <Stat value={`${live.acc}%`} label="Accuracy" trend={trend(live.acc, last?.acc, true)} />
             <Stat value={live.dev} label="Deviation, mm" trend={trend(live.dev, last?.dev, false)} />
           </div>
-          <BleedLines lines={[{ path: line(hx, 300, 80, -0.09, 0.09), color: "#1E7D5D" }, { path: line(hy, 300, 80, -0.09, 0.09), color: "#5AA4D6" }]} />
+          <BleedLines lines={[{ path: line(hx, 300, 80, -0.09, 0.09), color: "#3D8571" }, { path: line(hy, 300, 80, -0.09, 0.09), color: "#5AA4D6" }]} />
         </div>
 
         <div className="card" style={{ flex: "1 1 300px", minWidth: 0, paddingBottom: 0, display: "flex", flexDirection: "column", gap: 18, overflow: "hidden" }}>
@@ -640,7 +640,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
             ))}
           </div>
           <div style={{ display: "flex", gap: 18, marginTop: "auto", fontSize: 13, fontWeight: 600, flexWrap: "wrap" }}>
-            <span style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ width: 12, height: 12, borderRadius: "50%", border: "3px solid #1E7D5D" }} />Accel X</span>
+            <span style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ width: 12, height: 12, borderRadius: "50%", border: "3px solid #3D8571" }} />Accel X</span>
             <span style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ width: 12, height: 12, borderRadius: "50%", border: "3px solid #5AA4D6" }} />Accel Y</span>
           </div>
         </div>

@@ -70,7 +70,7 @@ export function Shell({
 
   const initials = profile.name.split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
   // No hardware is connected yet: the feed is simulated, so status dots are dim rather than "ok".
-  const dim = "rgba(242,232,213,.25)";
+  const dim = "rgba(166,202,200,.25)";
   const rail = [
     ["R4", "Arduino R4 WiFi (simulated)", dim],
     ["IMU", "BMI270 (simulated)", dim],

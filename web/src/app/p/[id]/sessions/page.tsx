@@ -80,7 +80,7 @@ export default async function Sessions({ params }: PageProps<"/p/[id]/sessions">
                     {s.samples.toLocaleString()} · csv
                   </a>
                 ) : (
-                  <span style={{ justifySelf: "end", height: 38, padding: "0 16px", borderRadius: 999, background: "var(--card)", display: "flex", alignItems: "center", fontSize: 11.5, color: "rgba(242,232,213,.35)" }}>no raw</span>
+                  <span style={{ justifySelf: "end", height: 38, padding: "0 16px", borderRadius: 999, background: "var(--card)", display: "flex", alignItems: "center", fontSize: 11.5, color: "rgba(166,202,200,.35)" }}>no raw</span>
                 )}
               </div>
             );

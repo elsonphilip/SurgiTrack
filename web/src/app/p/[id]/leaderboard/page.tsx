@@ -33,9 +33,9 @@ export default async function Leaderboard({ params, searchParams }: PageProps<"/
         isMe,
         ini: r.p.name.split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase(),
         w: Math.max(30, ((r.best - 40) / 60) * 100),
-        bg: isMe ? "#1E7D5D" : i === 0 ? "#F2E8D5" : "#5AA4D6",
-        fg: isMe ? "#F2E8D5" : "#12382D",
-        rankColor: isMe ? "#E3A857" : i < 3 ? "#F2E8D5" : "#5AA4D6",
+        bg: isMe ? "#3D8571" : i === 0 ? "#A6CAC8" : "#5AA4D6",
+        fg: isMe ? "#F1F7F6" : "#21211F",
+        rankColor: isMe ? "#E3A857" : i < 3 ? "#A6CAC8" : "#5AA4D6",
       };
     });
 
@@ -51,9 +51,9 @@ export default async function Leaderboard({ params, searchParams }: PageProps<"/
               key={l.level}
               href={active ? `/p/${id}/leaderboard` : `/p/${id}/leaderboard?level=${l.level}`}
               className="pill hov"
-              style={{ flex: "1 1 180px", height: 64, padding: "0 20px 0 8px", background: active ? "var(--cream)" : "var(--card)", color: active ? "var(--card)" : lock ? "rgba(242,232,213,.55)" : "var(--cream)", display: "flex", alignItems: "center", gap: 12 }}
+              style={{ flex: "1 1 180px", height: 64, padding: "0 20px 0 8px", background: active ? "var(--cream)" : "var(--card)", color: active ? "var(--card)" : lock ? "rgba(166,202,200,.55)" : "var(--cream)", display: "flex", alignItems: "center", gap: 12 }}
             >
-              <span className="head" style={{ width: 48, height: 48, borderRadius: "50%", background: active ? "var(--card)" : lock ? "var(--pill)" : "var(--steel)", color: active ? "var(--cream)" : lock ? "rgba(242,232,213,.55)" : "var(--card)", display: "grid", placeItems: "center", fontSize: 16 }}>L{l.level}</span>
+              <span className="head" style={{ width: 48, height: 48, borderRadius: "50%", background: active ? "var(--card)" : lock ? "var(--pill)" : "var(--steel)", color: active ? "var(--cream)" : lock ? "rgba(166,202,200,.55)" : "var(--card)", display: "grid", placeItems: "center", fontSize: 16 }}>L{l.level}</span>
               <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
                 <b style={{ fontSize: 14 }}>{l.name}</b>
                 <span className="mono" style={{ fontSize: 10.5, opacity: 0.7 }}>±{l.toleranceMm} mm · {l.unlock}</span>
@@ -78,7 +78,7 @@ export default async function Leaderboard({ params, searchParams }: PageProps<"/
                 </b>
                 <span className="mono muted" style={{ fontSize: 11 }}>{b.p.id} · L{b.p.level} · trm {b.trem.toFixed(1)}</span>
               </span>
-              <div style={{ position: "relative", height: 44, background: "repeating-linear-gradient(90deg,rgba(242,232,213,.08) 0 1px,transparent 1px 10%)" }}>
+              <div style={{ position: "relative", height: 44, background: "repeating-linear-gradient(90deg,rgba(166,202,200,.08) 0 1px,transparent 1px 10%)" }}>
                 <div style={{ position: "absolute", top: 0, bottom: 0, left: 0, width: `${b.w}%`, borderRadius: 999, background: b.bg, color: b.fg, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 16px 0 6px" }}>
                   <span className="mono" style={{ width: 34, height: 34, borderRadius: "50%", background: "var(--card)", color: "var(--cream)", display: "grid", placeItems: "center", fontSize: 11, fontWeight: 700 }}>{b.ini}</span>
                   <span className="head" style={{ fontSize: 17 }}>{b.best}</span>

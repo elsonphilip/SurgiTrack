@@ -49,7 +49,7 @@ export default async function Scoring({ params }: PageProps<"/p/[id]/scoring">) 
               <span className="mono muted" style={{ height: 28, padding: "0 12px", borderRadius: 999, background: "var(--pill)", display: "flex", alignItems: "center", fontSize: 10.5, whiteSpace: "nowrap" }}>{d.src}</span>
             </div>
             <div className="mono" style={{ background: "var(--canvas)", borderRadius: 18, padding: "14px 16px", fontSize: 12.5, fontWeight: 500, lineHeight: 1.5 }}>{d.f}</div>
-            <div style={{ fontSize: 13.5, lineHeight: 1.5, color: "rgba(242,232,213,.78)", textWrap: "pretty" }}>{d.body}</div>
+            <div style={{ fontSize: 13.5, lineHeight: 1.5, color: "rgba(166,202,200,.78)", textWrap: "pretty" }}>{d.body}</div>
           </div>
         ))}
       </div>
@@ -64,7 +64,7 @@ export default async function Scoring({ params }: PageProps<"/p/[id]/scoring">) 
         </div>
         <div style={{ flex: "1 1 320px", display: "flex", flexWrap: "wrap", gap: 8, alignContent: "flex-start" }}>
           {CHIPS.map(([k, v]) => (
-            <span key={k} style={{ height: 44, padding: "0 6px 0 16px", borderRadius: 999, background: "rgba(11,42,34,.45)", display: "flex", alignItems: "center", gap: 10, fontSize: 13 }}>
+            <span key={k} style={{ height: 44, padding: "0 6px 0 16px", borderRadius: 999, background: "rgba(15,16,21,.45)", display: "flex", alignItems: "center", gap: 10, fontSize: 13 }}>
               {k}
               <span className="mono" style={{ height: 32, padding: "0 12px", borderRadius: 999, background: "var(--cream)", color: "var(--card)", display: "flex", alignItems: "center", fontSize: 11.5, fontWeight: 600 }}>{v}</span>
             </span>

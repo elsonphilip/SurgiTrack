@@ -8,8 +8,8 @@ import { BleedLines, CardHead, DotMatrix, LEGEND_DOT, Stat, fmtDate, svgLine } f
 
 export const dynamic = "force-dynamic";
 
-const LVC = ["#F2E8D5", "#5AA4D6", "#1E7D5D", "#1E7D5D", "#1E7D5D"];
-const LVF = ["#12382D", "#12382D", "#F2E8D5", "#F2E8D5", "#F2E8D5"];
+const LVC = ["#A6CAC8", "#5AA4D6", "#3D8571", "#3D8571", "#3D8571"];
+const LVF = ["#21211F", "#21211F", "#F1F7F6", "#F1F7F6", "#F1F7F6"]; // text on each level colour
 
 export default async function Progress({ params }: PageProps<"/p/[id]/progress">) {
   const { id } = await params;
@@ -33,8 +33,8 @@ export default async function Progress({ params }: PageProps<"/p/[id]/progress">
   const cols = ss.map((s, i) => {
     const isBest = s.score > Math.max(0, ...scores.slice(0, i)); // new running personal best
     const prev = i ? ss[i - 1].score : s.score;
-    const bg = isBest ? "#F2E8D5" : s.score >= prev ? "#5AA4D6" : "#1E7D5D";
-    return { s, bg, fg: bg === "#1E7D5D" ? "#F2E8D5" : "#12382D", h: Math.round(44 + (Math.max(0, s.score - 55) / 45) * 150) };
+    const bg = isBest ? "#A6CAC8" : s.score >= prev ? "#5AA4D6" : "#3D8571";
+    return { s, bg, fg: bg === "#3D8571" ? "#F1F7F6" : "#21211F", h: Math.round(44 + (Math.max(0, s.score - 55) / 45) * 150) };
   });
   if (simple) {
     const need = profile.level < MAX_LEVEL ? UNLOCK_SCORE[profile.level] : null;
@@ -63,7 +63,7 @@ export default async function Progress({ params }: PageProps<"/p/[id]/progress">
               {cols.map(({ s: x, bg, fg, h }) => (
                 <div key={x.id} title={`${new Date(x.date).toLocaleString()} · ${LEVELS[x.level - 1].name}`} style={{ position: "relative", flex: 1, minWidth: 30, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end", gap: 8 }}>
                   <span style={{ position: "relative", width: 36, height: h, borderRadius: 999, background: bg, color: fg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700 }}>{x.score}</span>
-                  <span style={{ position: "relative", fontSize: 10.5, color: "rgba(242,232,213,.55)", whiteSpace: "nowrap" }}>{fmtDate(x.date)}</span>
+                  <span style={{ position: "relative", fontSize: 10.5, color: "rgba(166,202,200,.55)", whiteSpace: "nowrap" }}>{fmtDate(x.date)}</span>
                 </div>
               ))}
             </div>
@@ -113,7 +113,7 @@ export default async function Progress({ params }: PageProps<"/p/[id]/progress">
             <Stat value={`${f1(last.accuracy)}%`} label="Accuracy" trend={{ text: `${last.accuracy >= first.accuracy ? "▲" : "▼"} ${f1(Math.abs(last.accuracy - first.accuracy))}`, color: last.accuracy >= first.accuracy ? steel : "#E3A857" }} />
             <Stat value={last.avgDeviationMm.toFixed(2)} label="Avg deviation, mm" trend={{ text: `${last.avgDeviationMm <= first.avgDeviationMm ? "▼" : "▲"} ${Math.abs(last.avgDeviationMm - first.avgDeviationMm).toFixed(2)}`, color: last.avgDeviationMm <= first.avgDeviationMm ? steel : "#E3A857" }} />
           </div>
-          <BleedLines lines={[{ path: svgLine(ss.map((s) => s.accuracy), 300, 80), color: "#5AA4D6" }, { path: svgLine(ss.map((s) => s.avgDeviationMm), 300, 80), color: "#1E7D5D" }]} />
+          <BleedLines lines={[{ path: svgLine(ss.map((s) => s.accuracy), 300, 80), color: "#5AA4D6" }, { path: svgLine(ss.map((s) => s.avgDeviationMm), 300, 80), color: "#3D8571" }]} />
         </div>
 
         <div className="card" style={{ flex: "1 1 300px", minWidth: 0, paddingBottom: 0, display: "flex", flexDirection: "column", gap: 18, overflow: "hidden" }}>
@@ -122,7 +122,7 @@ export default async function Progress({ params }: PageProps<"/p/[id]/progress">
             <Stat value={f1(last.tremor)} label="Tremor, /10" trend={{ text: `${last.tremor <= first.tremor ? "▼" : "▲"} ${f1(Math.abs(last.tremor - first.tremor))}`, color: last.tremor <= first.tremor ? steel : "#E3A857" }} />
             <Stat value={Math.round(last.smoothness)} label="Smoothness" trend={{ text: `${last.smoothness >= first.smoothness ? "▲" : "▼"} ${Math.round(Math.abs(last.smoothness - first.smoothness))}`, color: last.smoothness >= first.smoothness ? steel : "#E3A857" }} />
           </div>
-          <DotMatrix cols={ss.slice(-14).map((s) => ({ lit: Math.min(6, Math.max(1, Math.round((s.tremor / 4) * 6))), color: s.tremor > 2.4 ? "#1E7D5D" : "#5AA4D6" }))} />
+          <DotMatrix cols={ss.slice(-14).map((s) => ({ lit: Math.min(6, Math.max(1, Math.round((s.tremor / 4) * 6))), color: s.tremor > 2.4 ? "#3D8571" : "#5AA4D6" }))} />
         </div>
 
         <div className="card" style={{ flex: "1 1 300px", minWidth: 0, display: "flex", flexDirection: "column", gap: 18 }}>
@@ -142,15 +142,15 @@ export default async function Progress({ params }: PageProps<"/p/[id]/progress">
           <div style={{ display: "flex", justifyContent: "space-between", gap: 4, height: 250, overflowX: "auto" }}>
             {cols.map(({ s, bg, fg, h }) => (
               <div key={s.id} title={`${new Date(s.date).toLocaleString()} · L${s.level}`} style={{ position: "relative", flex: 1, minWidth: 30, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end", gap: 8 }}>
-                <span style={{ position: "absolute", top: 0, bottom: 0, left: "50%", width: 1, background: "rgba(242,232,213,.12)" }} />
+                <span style={{ position: "absolute", top: 0, bottom: 0, left: "50%", width: 1, background: "rgba(166,202,200,.12)" }} />
                 <span style={{ position: "relative", width: 12, height: 12, borderRadius: "50%", background: LVC[s.level - 1] }} />
                 <span className="mono" style={{ position: "relative", width: 36, height: h, borderRadius: 999, background: bg, color: fg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700 }}>{s.score}</span>
-                <span className="mono" style={{ position: "relative", fontSize: 9.5, color: "rgba(242,232,213,.5)", whiteSpace: "nowrap" }}>{fmtDate(s.date)}</span>
+                <span className="mono" style={{ position: "relative", fontSize: 9.5, color: "rgba(166,202,200,.5)", whiteSpace: "nowrap" }}>{fmtDate(s.date)}</span>
               </div>
             ))}
           </div>
           <div style={{ display: "flex", gap: 22, alignItems: "center", flexWrap: "wrap", fontSize: 13.5, fontWeight: 600 }}>
-            {[["Personal best", "#F2E8D5"], ["Improved", "#5AA4D6"], ["Dropped", "#1E7D5D"]].map(([l, c]) => (
+            {[["Personal best", "#A6CAC8"], ["Improved", "#5AA4D6"], ["Dropped", "#3D8571"]].map(([l, c]) => (
               <span key={l} style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={LEGEND_DOT(c)} />{l}</span>
             ))}
             <span className="muted" style={{ marginLeft: "auto", fontWeight: 400 }}>Average: <b style={{ color: "var(--cream)" }}>{Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)}</b></span>
@@ -163,7 +163,7 @@ export default async function Progress({ params }: PageProps<"/p/[id]/progress">
             {timeline.map(({ s, left, w }) => (
               <div key={s.id} style={{ display: "grid", gridTemplateColumns: "52px minmax(0,1fr)", alignItems: "center", gap: 12 }}>
                 <span className="mono" style={{ fontSize: 12, fontWeight: 600 }}>{fmtDate(s.date)}</span>
-                <div style={{ position: "relative", height: 40, background: "repeating-linear-gradient(90deg,rgba(242,232,213,.08) 0 1px,transparent 1px 20%)" }}>
+                <div style={{ position: "relative", height: 40, background: "repeating-linear-gradient(90deg,rgba(166,202,200,.08) 0 1px,transparent 1px 20%)" }}>
                   <div style={{ position: "absolute", top: 0, bottom: 0, left: `${left}%`, width: `${w}%`, borderRadius: 999, background: LVC[s.level - 1], color: LVF[s.level - 1], display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 14px 0 4px" }}>
                     <span className="mono" style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--card)", color: "var(--cream)", display: "grid", placeItems: "center", fontSize: 10, fontWeight: 600 }}>L{s.level}</span>
                     <span className="mono" style={{ fontSize: 11, fontWeight: 700 }}>{s.accuracy.toFixed(0)}%</span>
@@ -173,13 +173,13 @@ export default async function Progress({ params }: PageProps<"/p/[id]/progress">
             ))}
             <div style={{ display: "grid", gridTemplateColumns: "52px minmax(0,1fr)", gap: 12 }}>
               <span />
-              <div className="mono" style={{ display: "flex", justifyContent: "space-between", fontSize: 11, fontWeight: 600, color: "rgba(242,232,213,.6)" }}>
+              <div className="mono" style={{ display: "flex", justifyContent: "space-between", fontSize: 11, fontWeight: 600, color: "rgba(166,202,200,.6)" }}>
                 {["50", "60", "70", "80", "90", "100%"].map((t) => <span key={t}>{t}</span>)}
               </div>
             </div>
           </div>
           <div style={{ display: "flex", gap: 20, alignItems: "center", flexWrap: "wrap", fontSize: 13.5, fontWeight: 600, marginTop: "auto" }}>
-            {[["L1", "#F2E8D5"], ["L2", "#5AA4D6"], ["L3+", "#1E7D5D"]].map(([l, c]) => (
+            {[["L1", "#A6CAC8"], ["L2", "#5AA4D6"], ["L3+", "#3D8571"]].map(([l, c]) => (
               <span key={l} style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={LEGEND_DOT(c)} />{l}</span>
             ))}
             <span className="muted" style={{ marginLeft: "auto", fontWeight: 400 }}>Bar: tremor-free span → accuracy</span>

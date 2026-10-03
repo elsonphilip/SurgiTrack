@@ -36,6 +36,11 @@ accuracy, precision, recall, F1, false-positive rate and inference time per wind
 `models/lgbm.txt` for `infer.py`. Tests (`pytest`) use generated signals only to check the code, never to train.
 Labels: `steady` = 0; `simulated_tremor` / `clinical_tremor` = 1; other labels are skipped.
 
+## Look & feel
+Palette (`web/src/app/globals.css`): page `#0f1015`, panels `#21211f`, pale-teal text `#a6cac8`, muted-green accent `#3d8571`,
+logo blue `#5aa4d6` for secondary data, amber `#e3a857` for warnings. First open per browser session shows a ~3.6 s splash
+(logo, wordmark, one quote from `web/src/lib/quotes.ts`); click or Esc skips it.
+
 ## Two views
 The site opens in the **Simple** view, built for students: Practice / My Progress / History / Leaderboard, a three-step
 guide, one big Start button, plain-language feedback ("Hand tremor: Mild"), a coaching tip after each run, and unlock
