@@ -15,20 +15,66 @@ import numpy as np
 from engine import Sample
 
 
+class CameraFeed:
+    """Background thread: camera tracker → mapper → latest fingertip in trace-area mm, plus a preview JPEG for the browser."""
+
+    def __init__(self, tracker, mapper, dist_fn=lambda: 14.0):
+        self.tracker, self.mapper, self.dist_fn = tracker, mapper, dist_fn
+        self.finger, self._new, self.jpeg, self._jpeg_t = None, False, None, 0.0
+        self._stop = False
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+
+    def _run(self):
+        while not self._stop:
+            det = self.tracker.read()
+            self.finger = None if det is None else self.mapper.to_mm(det, self.dist_fn())
+            self._new = True
+            now = time.monotonic()
+            if now - self._jpeg_t > 0.12:  # ≈8 fps preview
+                self.jpeg, self._jpeg_t = self.tracker.annotated_jpeg(det), now
+
+    def take(self):
+        """(latest fingertip or None, True if it is a fresh camera frame since the last call)."""
+        new, self._new = self._new, False
+        return self.finger, new
+
+    def close(self):
+        """Stop the thread and release the camera (idempotent). Needed for a clean exit: MediaPipe can hang at shutdown."""
+        if self._stop:
+            return
+        self._stop = True
+        self._thread.join(timeout=2)
+        try:
+            self.tracker.close()
+        except Exception:
+            pass
+
+
 class SimulatedRig:
-    def __init__(self, rate_hz=100.0, finger_hz=30.0, skill=0.6, tremor_hz=8.6, seed=0, speed=1.0, realtime=True):
+    """Fake wristband (IMU + distance). The fingertip is simulated too — unless you pass a camera tracker + mapper, in
+    which case your REAL hand (laptop webcam) drives the path tracing and only the IMU is fake."""
+
+    def __init__(self, rate_hz=100.0, finger_hz=30.0, skill=0.6, tremor_hz=8.6, seed=0, speed=1.0, realtime=True,
+                 tracker=None, mapper=None):
         self.rate, self.finger_hz, self.skill, self.f_tr = rate_hz, finger_hz, float(np.clip(skill, 0, 1)), tremor_hz
         self.speed, self.realtime = speed, realtime
         self.rng = np.random.default_rng(seed)
         self.t, self._next_finger, self.buzzes = 0.0, 0.0, 0
         self._finger = None  # last fingertip position; held between camera frames like the real rig
         self._wall0 = time.perf_counter()
+        self.has_camera = tracker is not None
+        self.cam = CameraFeed(tracker, mapper) if tracker is not None else None
 
     def buzz(self):
         self.buzzes += 1
 
     def latest_jpeg(self):
-        return None  # the simulator has no camera
+        return self.cam.jpeg if self.cam else None
+
+    def close(self):
+        if self.cam:
+            self.cam.close()
 
     def read(self, target_mm, running):
         dt = 1.0 / self.rate
@@ -51,7 +97,9 @@ class SimulatedRig:
             rng.normal(0, 0.2),
         )
         new = False
-        if t >= self._next_finger:
+        if self.cam is not None:  # real hand from the camera
+            self._finger, new = self.cam.take()
+        elif t >= self._next_finger:
             self._next_finger = t + 1.0 / self.finger_hz
             new = True
             tx, ty = target_mm
@@ -94,13 +142,11 @@ class HardwareRig:
         self.ser = serial.serial_for_url(port, baudrate=baud, timeout=0.2)
         self.tracker, self.mapper = tracker, mapper or OverheadMapper()
         self.has_camera = tracker is not None
-        self._jpeg, self._jpeg_t = None, 0.0
         self.q = queue.Queue(maxsize=4000)
-        self._finger, self._finger_new, self._dist, self._t0 = None, False, 14.0, None
+        self._dist, self._t0 = 14.0, None
         self._stop = False
         threading.Thread(target=self._read_serial, daemon=True).start()
-        if tracker:
-            threading.Thread(target=self._read_camera, daemon=True).start()
+        self.cam = CameraFeed(tracker, self.mapper, lambda: self._dist) if tracker else None
 
     def _read_serial(self):
         while not self._stop:
@@ -114,17 +160,8 @@ class HardwareRig:
                 except queue.Full:
                     pass
 
-    def _read_camera(self):
-        while not self._stop:
-            det = self.tracker.read()
-            self._finger = None if det is None else self.mapper.to_mm(det, self._dist)
-            self._finger_new = True
-            now = time.monotonic()
-            if now - self._jpeg_t > 0.12:  # ≈8 fps preview for the browser
-                self._jpeg, self._jpeg_t = self.tracker.annotated_jpeg(det), now
-
     def latest_jpeg(self):
-        return self._jpeg
+        return self.cam.jpeg if self.cam else None
 
     def read(self, target_mm, running):
         t_us, imu, dist = self.q.get(timeout=2.0)
@@ -132,8 +169,8 @@ class HardwareRig:
             self._dist = dist
         if self._t0 is None:
             self._t0 = t_us
-        new, self._finger_new = self._finger_new, False
-        return Sample((t_us - self._t0) / 1e6, imu, self._finger, new, self._dist)
+        finger, new = self.cam.take() if self.cam else (None, False)
+        return Sample((t_us - self._t0) / 1e6, imu, finger, new, self._dist)
 
     def buzz(self, effect=47):
         """Ask the Arduino to play a DRV2605L effect (47 = strong buzz)."""
@@ -141,4 +178,6 @@ class HardwareRig:
 
     def close(self):
         self._stop = True
+        if self.cam:
+            self.cam.close()
         self.ser.close()

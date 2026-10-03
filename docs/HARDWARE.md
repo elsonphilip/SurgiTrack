@@ -68,8 +68,22 @@ python3 pi/server.py --serial /dev/cu.usbmodem1101 --camera 0 --camera-mode webc
   expect a few mm of measurement noise — fine for Levels 1–2, rough for the ±1–1.5 mm levels. Tremor is still measured by the
   wristband IMU, which is far more precise than the camera.
 * **macOS:** the first run asks for Camera permission for your terminal app (System Settings → Privacy & Security → Camera).
+* **No Arduino yet? Test just the camera:** `python3 pi/server.py --simulate --camera 0 --camera-mode webcam` — the wristband
+  (IMU) is faked, but your REAL hand is tracked. Sessions from this mode are flagged DEMO and never count toward real progress.
 * **No camera handy?** `--camera some_video.mp4` replays a video file (paced, looping) — useful for demos.
 * The Live Session camera card shows the preview with hand landmarks drawn on it.
+
+### Is my camera working? (3 checks)
+1. `python3 pi/camera_check.py --camera 0 --mode webcam` → a window opens with your picture; hold your hand up and a **green ring
+   should sit on your index fingertip**, with `x,y px` and `mm` printed. No window / "could not open camera" = permission or wrong
+   index (try `--camera 1`). No ring = poor light or hand too small/far.
+2. Run the runner (`--simulate --camera 0 --camera-mode webcam`, or with `--serial`), open the website, **Detailed** view →
+   Live Session → Settings → **Data source = Raspberry Pi** (address `ws://localhost:8765`). The chip should say **PI · SIMULATED**
+   (or **PI · LIVE** with a real wristband) and the **Pi camera card shows your live video with the hand skeleton**.
+3. The blue ring on the canvas follows your fingertip. If it says "Can't see your hand", the camera has lost you.
+
+Note: the **browser never opens the camera** — the Python runner does, and the page only shows its preview. So the camera card
+stays a striped placeholder until the runner is running and the Data source is set to Raspberry Pi (Detailed view only).
 
 ## 5. Run everything (all local)
 ```

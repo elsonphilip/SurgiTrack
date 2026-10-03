@@ -1,6 +1,7 @@
 """SurgiTrack runner: drives a sensor rig + session engine and streams it to the browser over a WebSocket.
 
   python server.py --simulate                      # no hardware: a simulated person (sessions are flagged DEMO)
+  python server.py --simulate --camera 0 --camera-mode webcam   # fake wristband, REAL hand via the laptop webcam (DEMO)
   python server.py --serial /dev/cu.usbmodem1101 --camera 0 --camera-mode webcam   # real wristband + laptop webcam
   python server.py --serial /dev/ttyACM0 --camera 0   # Pi: wristband + overhead Pi camera (hardware: not yet tested)
 
@@ -135,6 +136,9 @@ class Runner:
 
     def stop(self):
         self._stop.set()
+        close = getattr(self.rig, "close", None)
+        if close:
+            close()  # release the camera / serial port
 
 
 def main():
@@ -153,25 +157,26 @@ def main():
     ap.add_argument("--api-key", default=None)
     a = ap.parse_args()
 
+    tracker, mapper = None, None
+    if a.camera is not None:
+        from camera import FingertipTracker
+        from scale import HandRulerMapper, OverheadMapper
+
+        src = int(a.camera) if str(a.camera).isdigit() else a.camera
+        tracker = FingertipTracker(src)
+        w, h = int(tracker.cap.get(3) or 640), int(tracker.cap.get(4) or 480)
+        mapper = HandRulerMapper(w, h, mirror_x=not a.no_mirror) if a.camera_mode == "webcam" else OverheadMapper()
+        tracker.mirror_preview = a.camera_mode == "webcam" and not a.no_mirror
+        print(f"Camera {a.camera}: {w}×{h}, {a.camera_mode} mode")
+
     if a.simulate:
         from rig import SimulatedRig
 
-        rig, simulated = SimulatedRig(skill=a.skill, speed=a.speed), True
+        # --simulate fakes the wristband (IMU); with --camera your real hand is tracked. Either way sessions are flagged DEMO.
+        rig, simulated = SimulatedRig(skill=a.skill, speed=a.speed, tracker=tracker, mapper=mapper), True
     elif a.serial:
         from rig import HardwareRig
 
-        tracker, mapper = None, None
-        if a.camera is not None:
-            from camera import FingertipTracker
-            from scale import HandRulerMapper, OverheadMapper
-
-            src = int(a.camera) if str(a.camera).isdigit() else a.camera
-            tracker = FingertipTracker(src)
-            w = int(tracker.cap.get(3) or 640)
-            h = int(tracker.cap.get(4) or 480)
-            mapper = HandRulerMapper(w, h, mirror_x=not a.no_mirror) if a.camera_mode == "webcam" else OverheadMapper()
-            tracker.mirror_preview = a.camera_mode == "webcam" and not a.no_mirror
-            print(f"Camera {a.camera}: {w}×{h}, {a.camera_mode} mode")
         rig, simulated = HardwareRig(a.serial, tracker, mapper), False
     else:
         ap.error("choose --simulate or --serial PORT")

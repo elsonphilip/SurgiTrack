@@ -100,3 +100,63 @@ def test_hardware_rig_end_to_end_with_virtual_serial_and_video(video):
     xs = [s.finger_mm[0] for s in with_finger]
     assert xs[-1] < xs[0], "hand slides right in the video; mirrored webcam mapping moves the cursor left"
     assert rig.latest_jpeg() is None or rig.latest_jpeg()[:2] == b"\xff\xd8"  # a real JPEG
+
+
+def test_simulated_wristband_with_real_camera(video):
+    """--simulate --camera: the IMU is fake but the fingertip comes from the camera (here a replayed video)."""
+    from rig import SimulatedRig
+
+    tr = FingertipTracker(video)
+    rig = SimulatedRig(realtime=True, speed=3.0, tracker=tr, mapper=HandRulerMapper(640, 480, smooth=0.3))
+    try:
+        samples = [rig.read((0, 0), False) for _ in range(250)]
+    finally:
+        rig.close()
+    assert rig.has_camera
+    fingers = [s.finger_mm for s in samples if s.finger_mm is not None]
+    assert fingers, "camera never delivered a fingertip"
+    # a simulated finger would sit within 1 mm of the (0, 0) target; the real hand in the video is nowhere near it
+    assert max(abs(x) + abs(y) for x, y in fingers) > 20
+    assert any(s.finger_new for s in samples)
+    assert rig.latest_jpeg() is None or rig.latest_jpeg()[:2] == b"\xff\xd8"
+
+
+def test_runner_streams_camera_preview_and_flags_camera(video):
+    import asyncio
+    import json
+
+    from rig import SimulatedRig
+    from server import Runner
+
+    tr = FingertipTracker(video)
+    rig = SimulatedRig(realtime=True, speed=2.0, tracker=tr, mapper=HandRulerMapper(640, 480))
+    runner = Runner(rig, simulated=True, site="http://127.0.0.1:9")
+
+    async def main():
+        from websockets.asyncio.client import connect
+        from websockets.asyncio.server import serve
+
+        runner.loop = asyncio.get_running_loop()
+        threading.Thread(target=runner.engine_loop, daemon=True).start()
+        async with serve(runner.handler, "127.0.0.1", 0) as srv:
+            port = srv.sockets[0].getsockname()[1]
+            kinds, hello, finger_seen = [], None, False
+            async with connect(f"ws://127.0.0.1:{port}") as ws:
+                end = asyncio.get_event_loop().time() + 8
+                while asyncio.get_event_loop().time() < end and not ("video" in kinds and finger_seen):
+                    m = json.loads(await asyncio.wait_for(ws.recv(), 5))
+                    kinds.append(m["type"])
+                    if m["type"] == "hello":
+                        hello = m
+                    if m["type"] == "frame" and m["finger"]:
+                        finger_seen = True
+                    if m["type"] == "video":
+                        assert len(m["jpeg"]) > 200
+            return hello, kinds, finger_seen
+
+    try:
+        hello, kinds, finger_seen = asyncio.run(main())
+    finally:
+        runner.stop()
+    assert hello["simulated"] is True and hello["camera"] is True
+    assert "video" in kinds and finger_seen
