@@ -41,7 +41,7 @@ python3 pi/collect.py --port <PORT> --user p01  # guided recordings for one part
 python3 pi/inventory.py                         # do we have enough data?
 python3 pi/train.py                             # baseline vs Random Forest vs LightGBM → models/lgbm.txt
 ```
-Full walkthrough and caveats: [`docs/TRAINING.md`](docs/TRAINING.md).
+Full walkthrough and caveats (Mac/Linux and **Windows**): [`docs/TRAINING.md`](docs/TRAINING.md).
 
 ## Look & feel
 Palette (`web/src/app/globals.css`): page `#0f1015`, panels `#21211f`, pale-teal text `#a6cac8`, muted-green accent `#3d8571`,

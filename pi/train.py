@@ -12,6 +12,7 @@ accuracy, precision, recall, F1, false-positive rate, inference time per window.
 Never splits random windows: windows from one person never appear in both train and test.
 """
 import argparse
+import sys
 import json
 import time
 from pathlib import Path
@@ -166,6 +167,8 @@ def print_report(r):
 
 
 if __name__ == "__main__":
+    if hasattr(sys.stdout, "reconfigure"):  # Windows consoles may not be UTF-8; never crash on ✓ / ✗ / …
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default=str(Path(__file__).resolve().parent.parent / "models"))
     ap.add_argument("--seed", type=int, default=0)

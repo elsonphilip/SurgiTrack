@@ -112,4 +112,6 @@ def main():
 
 
 if __name__ == "__main__":
+    if hasattr(sys.stdout, "reconfigure"):  # Windows consoles may not be UTF-8; never crash on ✓ / ✗ / …
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     main()
