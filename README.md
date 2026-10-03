@@ -20,8 +20,6 @@ feedback (DRV2605L). A Pi camera + MediaPipe Hands tracks path; the IMU is the p
 cd pi && pip install -r requirements.txt && pytest
 python recorder.py --port /dev/ttyACM0 --user u01 --task steady_hold --label steady --seconds 30
 ```
-Not a medical device; any Parkinson's indication is a screening signal, not a diagnosis.
-
 ## Tremor model (`pi/`)
 ```
 BMI270/camera → raw time series → high-pass filter + 2 s windows → features → LightGBM → tremor probability
