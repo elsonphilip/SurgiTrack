@@ -1,8 +1,9 @@
 """Check fingertip tracking before running a session.
 
   python camera_check.py --image photo.jpg [--save out.jpg]     # still image (works headless)
-  python camera_check.py --camera 0 [--height-cm 14]            # live window (needs a display); press q to quit
-Prints the fingertip in pixels and in trace-area millimetres (using the HC-SR04 height you pass).
+  python camera_check.py --camera 0 --mode webcam               # laptop webcam: live window, hand-size ruler; press q to quit
+  python camera_check.py --camera 0 --height-cm 14              # overhead Pi camera (HC-SR04 height you pass)
+Prints the fingertip in pixels and in trace-area millimetres.
 """
 import argparse
 import time
@@ -10,7 +11,13 @@ import time
 import cv2
 
 from camera import FingertipTracker, HandDetector
-from scale import CameraGeometry, px_to_trace_mm
+from scale import CameraGeometry, HandRulerMapper, px_to_trace_mm
+
+
+def to_mm(det, a, w, h, mapper):
+    if det is None:
+        return None
+    return mapper.to_mm(det, a.height_cm) if mapper else px_to_trace_mm(det.px, a.height_cm, CameraGeometry(width_px=w, height_px=h))
 
 
 def annotate(frame_bgr, px, mm):
@@ -29,31 +36,35 @@ def main():
     ap.add_argument("--save")
     ap.add_argument("--camera", type=int)
     ap.add_argument("--height-cm", type=float, default=14.0)
+    ap.add_argument("--mode", choices=["overhead", "webcam"], default="overhead")
     a = ap.parse_args()
     if a.image:
         frame = cv2.imread(a.image)
         if frame is None:
             raise SystemExit(f"cannot read {a.image}")
         det = HandDetector("image")
-        px = det.find(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-        geom = CameraGeometry(width_px=frame.shape[1], height_px=frame.shape[0])
-        mm = px_to_trace_mm(px, a.height_cm, geom) if px else None
+        d = det.detect(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        h, w = frame.shape[:2]
+        mapper = HandRulerMapper(w, h, smooth=1.0) if a.mode == "webcam" else None
+        px = d.px if d else None
+        mm = to_mm(d, a, w, h, mapper)
         det.close()
-        print("fingertip px:", px, "→ mm:", mm)
+        print("fingertip px:", px, "→ mm:", mm, f"| hand ruler: {d.hand_px:.0f} px" if d else "")
         if a.save:
             cv2.imwrite(a.save, annotate(frame, px, mm))
             print("saved", a.save)
     elif a.camera is not None:
         tr, n, t0 = FingertipTracker(a.camera), 0, time.time()
-        geom = CameraGeometry(tr.cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 640, tr.cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 480)
+        w, h = int(tr.cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 640), int(tr.cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 480)
+        mapper = HandRulerMapper(w, h) if a.mode == "webcam" else None
         print("press q in the window to quit")
         while True:
             ok, frame = tr.cap.read()
             if not ok:
                 break
-            px = tr.detector.find(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+            d = tr.detector.detect(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
             n += 1
-            cv2.imshow("SurgiTrack camera check", annotate(frame, px, px_to_trace_mm(px, a.height_cm, geom) if px else None))
+            cv2.imshow("SurgiTrack camera check", annotate(frame, d.px if d else None, to_mm(d, a, w, h, mapper)))
             if cv2.waitKey(1) & 0xFF == ord("q"):
                 break
         print(f"{n / (time.time() - t0):.1f} fps")

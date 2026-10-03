@@ -66,6 +66,7 @@ stored as DEMO data. With real hardware: `python3 pi/server.py --serial /dev/tty
 
 First time on the Pi side: `pip install -r pi/requirements.txt`; for the camera also `sudo apt install libegl1 libgles2` and
 `pip install -r pi/requirements-camera.txt` (MediaPipe hand tracking), then check it with `python3 pi/camera_check.py --camera 0`.
+Laptop webcam instead of the Pi camera: `python3 pi/server.py --serial <PORT> --camera 0 --camera-mode webcam` (see `docs/HARDWARE.md` §4b).
 
 ## Target paths
 27 paths across the 5 levels live in `web/src/lib/paths.ts` (straight/diagonal strokes, arcs and S-curves, a fusiform

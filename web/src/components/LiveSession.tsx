@@ -110,13 +110,16 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
   const [error, setError] = useState<string | null>(null);
   const [piStatus, setPiStatus] = useState<"off" | "online" | "offline">("off");
   const [piSim, setPiSim] = useState(false);
+  const [piCamera, setPiCamera] = useState(false);
+  const [video, setVideo] = useState<string | null>(null);
+  const [handLost, setHandLost] = useState(false);
   const [activePath, setActivePath] = useState(defaultPath(Math.min(Math.max(startLevel, 1), 5)).id);
 
   const cv = useRef<HTMLCanvasElement>(null);
   const R = useRef({
     phase: (autoStart ? "calib" : "idle") as Phase, level, calStep: 0, trace: [] as [number, number, boolean][], pts: [] as number[][], path: defaultPath(Math.min(Math.max(startLevel, 1), 5)),
     acc: { n: 0, in: 0, dev: 0, tr: 0, pulses: 0 }, wasOut: false, hapUntil: 0, t0: 0, m0: 0, lastUi: 0,
-    hx: [] as number[], hy: [] as number[], raw: [] as RawSample[], settings: DEFAULTS, mode: "sim" as "sim" | "pi", ws: null as WebSocket | null, ct: 0 as unknown as ReturnType<typeof setInterval>,
+    hx: [] as number[], hy: [] as number[], raw: [] as RawSample[], settings: DEFAULTS, mode: "sim" as "sim" | "pi", ws: null as WebSocket | null, cursor: null as [number, number] | null, ct: 0 as unknown as ReturnType<typeof setInterval>,
   });
 
   const setPhase = (p: Phase) => { R.current.phase = p; setPhaseS(p); };
@@ -231,7 +234,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
     let ws: WebSocket | null = null, closed = false, retry: ReturnType<typeof setTimeout> | undefined;
     const handle = (m: Record<string, any>) => { // eslint-disable-line @typescript-eslint/no-explicit-any
       if (m.type === "hello") {
-        setPiStatus("online"); setPiSim(!!m.simulated);
+        setPiStatus("online"); setPiSim(!!m.simulated); setPiCamera(!!m.camera);
         piSend(r, { cmd: "set", userId: profileId, level: r.level, pathId: r.path.id, sessionLength: r.settings.sessionLength });
       } else if (m.type === "state") {
         r.calStep = m.calStep; setCalStep(m.calStep); setCalCount(m.calCount); setNoise(Number(m.noise).toFixed(3));
@@ -250,6 +253,8 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
         setHx(r.hx); setHy(r.hy);
         if (m.dist != null) setDist(Number(m.dist).toFixed(1));
         setHapticOn(!!m.haptic); setHaptic(!!m.haptic);
+        r.cursor = m.finger ? [m.finger[0] * PX, m.finger[1] * PX] : null;
+        setHandLost(!m.finger);
         if (m.phase === "run") {
           setLive({ acc: m.acc == null ? "--" : String(Math.round(m.acc)), dev: m.dev == null ? "--" : Number(m.dev).toFixed(1), trem: Number(m.trem).toFixed(1), smooth: String(m.smooth), time: Number(m.time).toFixed(1), pct: m.pct, pulses: m.pulses });
           if (m.finger && r.trace.length < 5000) r.trace.push([m.finger[0] * PX, m.finger[1] * PX, !!m.out]);
@@ -263,7 +268,8 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
           setError(null);
           router.refresh();
         } else setError(m.error || "Session was not saved");
-      } else if (m.type === "error") setError(m.message);
+      } else if (m.type === "video") setVideo(m.jpeg);
+      else if (m.type === "error") setError(m.message);
     };
     const connect = () => {
       try { ws = new WebSocket(settings.piUrl); } catch { setPiStatus("offline"); return; }
@@ -275,8 +281,8 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
     connect();
     return () => {
       closed = true; clearTimeout(retry); ws?.close();
-      r.ws = null; r.mode = "sim"; r.phase = "idle"; r.trace = [];
-      setPiStatus("off"); setPhaseS("idle"); setLive(EMPTY); setHapticOn(false); setHaptic(false);
+      r.ws = null; r.mode = "sim"; r.phase = "idle"; r.trace = []; r.cursor = null;
+      setPiStatus("off"); setVideo(null); setHandLost(false); setPhaseS("idle"); setLive(EMPTY); setHapticOn(false); setHaptic(false);
     };
   }, [settings.source, settings.piUrl, profileId, router, setHaptic, setDist]);
 
@@ -321,6 +327,10 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
       for (let i = 1; i < T.length; i++) {
         g.strokeStyle = heat && T[i][2] ? "#E3A857" : "#A6CAC8";
         g.beginPath(); g.moveTo(T[i - 1][0], T[i - 1][1]); g.lineTo(T[i][0], T[i][1]); g.stroke();
+      }
+      if (r.mode === "pi" && r.cursor && r.phase !== "run") { // live fingertip, so you can line up with the start point
+        g.strokeStyle = "#5AA4D6"; g.lineWidth = 3; g.beginPath(); g.arc(r.cursor[0], r.cursor[1], 11, 0, 7); g.stroke();
+        g.fillStyle = "#5AA4D6"; g.beginPath(); g.arc(r.cursor[0], r.cursor[1], 3, 0, 7); g.fill();
       }
       if (T.length && r.phase === "run") {
         const p = T[T.length - 1], hot = now < r.hapUntil;
@@ -438,6 +448,9 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
                 </li>
               ))}
             </ol>
+          )}
+          {settings.source === "pi" && piStatus === "online" && piCamera && handLost && phase !== "done" && (
+            <div role="status" style={{ padding: "10px 16px", borderRadius: 16, background: "var(--pill)", color: "var(--warn)", fontSize: 13.5 }}>Can’t see your hand — keep it in view of the camera, palm toward it.</div>
           )}
           {error && phase !== "done" && (
             <div role="alert" style={{ padding: "10px 16px", borderRadius: 16, background: "var(--pill)", color: "var(--warn)", fontSize: 13.5 }}>{error}</div>
@@ -590,7 +603,12 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
                 </span>
               </div>
               <div style={{ aspectRatio: "4/3", borderRadius: 20, background: "repeating-linear-gradient(135deg,#2C2C2A 0 10px,#363634 10px 20px)", display: "grid", placeItems: "center" }}>
-                <span className="mono muted" style={{ fontSize: 11, lineHeight: 1.6, textAlign: "center" }}>camera feed<br />+ mediapipe landmarks</span>
+                {video ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={`data:image/jpeg;base64,${video}`} alt="Camera preview with hand landmarks" style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: 20 }} />
+                ) : (
+                  <span className="mono muted" style={{ fontSize: 11, lineHeight: 1.6, textAlign: "center" }}>camera feed<br />+ mediapipe landmarks</span>
+                )}
               </div>
             </div>
           )}

@@ -27,6 +27,9 @@ class SimulatedRig:
     def buzz(self):
         self.buzzes += 1
 
+    def latest_jpeg(self):
+        return None  # the simulator has no camera
+
     def read(self, target_mm, running):
         dt = 1.0 / self.rate
         if self.realtime:  # pace to wall-clock so a human can watch it
@@ -82,13 +85,16 @@ def parse_line(line):
 class HardwareRig:
     """Arduino stream over USB serial + camera fingertip tracking. Untested on real hardware."""
 
-    def __init__(self, port, tracker=None, geometry=None, baud=460800):
+    def __init__(self, port, tracker=None, mapper=None, baud=460800):
         import serial
 
-        from scale import CameraGeometry, px_to_trace_mm
+        from scale import OverheadMapper
 
-        self.ser = serial.Serial(port, baud, timeout=0.2)
-        self.tracker, self.geom, self._to_mm = tracker, geometry or CameraGeometry(), px_to_trace_mm
+        # serial_for_url accepts real device paths AND pyserial URLs like loop:// (used by the tests)
+        self.ser = serial.serial_for_url(port, baudrate=baud, timeout=0.2)
+        self.tracker, self.mapper = tracker, mapper or OverheadMapper()
+        self.has_camera = tracker is not None
+        self._jpeg, self._jpeg_t = None, 0.0
         self.q = queue.Queue(maxsize=4000)
         self._finger, self._finger_new, self._dist, self._t0 = None, False, 14.0, None
         self._stop = False
@@ -110,9 +116,15 @@ class HardwareRig:
 
     def _read_camera(self):
         while not self._stop:
-            px = self.tracker.read()
-            self._finger = None if px is None else self._to_mm(px, self._dist, self.geom)
+            det = self.tracker.read()
+            self._finger = None if det is None else self.mapper.to_mm(det, self._dist)
             self._finger_new = True
+            now = time.monotonic()
+            if now - self._jpeg_t > 0.12:  # ≈8 fps preview for the browser
+                self._jpeg, self._jpeg_t = self.tracker.annotated_jpeg(det), now
+
+    def latest_jpeg(self):
+        return self._jpeg
 
     def read(self, target_mm, running):
         t_us, imu, dist = self.q.get(timeout=2.0)

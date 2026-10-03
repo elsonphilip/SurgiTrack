@@ -1,13 +1,15 @@
 """SurgiTrack runner: drives a sensor rig + session engine and streams it to the browser over a WebSocket.
 
   python server.py --simulate                      # no hardware: a simulated person (sessions are flagged DEMO)
-  python server.py --serial /dev/ttyACM0 --camera 0   # real wristband + camera (hardware: not yet tested)
+  python server.py --serial /dev/cu.usbmodem1101 --camera 0 --camera-mode webcam   # real wristband + laptop webcam
+  python server.py --serial /dev/ttyACM0 --camera 0   # Pi: wristband + overhead Pi camera (hardware: not yet tested)
 
 Browser (Live Session → Settings → Data source = Raspberry Pi) connects to ws://<this machine>:8765.
 Finished sessions are POSTed to the website (--site, default http://localhost:3000). Message formats: docs/PROTOCOL.md.
 """
 import argparse
 import asyncio
+import base64
 import json
 import threading
 import time
@@ -42,7 +44,7 @@ class Runner:
 
     # ----- engine loop (own thread) -----
     def engine_loop(self):
-        e, last_frame = self.engine, -1e9  # wall-clock time of the last frame sent
+        e, last_frame, last_video, sent_video = self.engine, -1e9, -1e9, None  # wall-clock times of the last frame / preview sent
         while not self._stop.is_set():
             try:
                 target, running = e.target_mm(), e.phase == "run"
@@ -59,6 +61,12 @@ class Runner:
             if now - last_frame >= 1.0 / FRAME_HZ:
                 last_frame = now
                 self._emit({"type": "frame", **e.live(s)})
+            if now - last_video >= 0.12 and self.clients:  # camera preview (only rigs with a camera return one)
+                last_video = now
+                jpeg = self.rig.latest_jpeg()
+                if jpeg is not None and jpeg is not sent_video:
+                    sent_video = jpeg
+                    self._emit({"type": "video", "jpeg": base64.b64encode(jpeg).decode()})
             for kind, payload in events:
                 if kind == "error":
                     self._emit({"type": "error", "message": payload})
@@ -86,7 +94,7 @@ class Runner:
     # ----- websocket side -----
     async def handler(self, ws):
         self.clients.add(ws)
-        await ws.send(json.dumps({"type": "hello", "version": 1, "simulated": self.simulated, "paths": sorted(load_paths())}))
+        await ws.send(json.dumps({"type": "hello", "version": 1, "simulated": self.simulated, "camera": bool(getattr(self.rig, "has_camera", False)), "paths": sorted(load_paths())}))
         await ws.send(json.dumps({"type": "state", **self.engine.state()}))
         try:
             async for raw in ws:
@@ -135,7 +143,10 @@ def main():
     ap.add_argument("--skill", type=float, default=0.6, help="simulated steadiness 0 (shaky) – 1 (steady)")
     ap.add_argument("--speed", type=float, default=1.0, help="simulation speed multiplier")
     ap.add_argument("--serial", help="Arduino serial port, e.g. /dev/ttyACM0")
-    ap.add_argument("--camera", type=int, default=None, help="camera index for MediaPipe fingertip tracking")
+    ap.add_argument("--camera", default=None, help="camera for MediaPipe fingertip tracking: 0 = laptop webcam, or a video file")
+    ap.add_argument("--camera-mode", choices=["overhead", "webcam"], default="overhead",
+                    help="overhead = Pi camera looking down (height from the distance sensor); webcam = laptop camera facing you (hand-size ruler)")
+    ap.add_argument("--no-mirror", action="store_true", help="webcam mode: don't flip left/right")
     ap.add_argument("--host", default="0.0.0.0")
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--site", default="http://localhost:3000")
@@ -149,12 +160,19 @@ def main():
     elif a.serial:
         from rig import HardwareRig
 
-        tracker = None
+        tracker, mapper = None, None
         if a.camera is not None:
             from camera import FingertipTracker
+            from scale import HandRulerMapper, OverheadMapper
 
-            tracker = FingertipTracker(a.camera)
-        rig, simulated = HardwareRig(a.serial, tracker), False
+            src = int(a.camera) if str(a.camera).isdigit() else a.camera
+            tracker = FingertipTracker(src)
+            w = int(tracker.cap.get(3) or 640)
+            h = int(tracker.cap.get(4) or 480)
+            mapper = HandRulerMapper(w, h, mirror_x=not a.no_mirror) if a.camera_mode == "webcam" else OverheadMapper()
+            tracker.mirror_preview = a.camera_mode == "webcam" and not a.no_mirror
+            print(f"Camera {a.camera}: {w}×{h}, {a.camera_mode} mode")
+        rig, simulated = HardwareRig(a.serial, tracker, mapper), False
     else:
         ap.error("choose --simulate or --serial PORT")
     screener = load_screener()

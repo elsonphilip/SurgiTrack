@@ -51,6 +51,26 @@ Mount the Pi camera pointing straight down at the paper, HC-SR04 next to it poin
 field of view (62.2°). Check with a ruler: move a fingertip 50 mm and compare the printed mm; adjust `CameraGeometry`
 (`hfov_deg`, `center_px`, `mirror_x`). Good lighting and a plain background make the fingertip far steadier.
 
+## 4b. Laptop webcam instead of the Pi camera
+A laptop camera faces *you*, not the paper, and there is no height sensor, so the setup differs:
+```
+python3 pi/camera_check.py --camera 0 --mode webcam                    # live preview; press q to quit
+python3 pi/server.py --serial /dev/cu.usbmodem1101 --camera 0 --camera-mode webcam
+```
+* **You trace by watching the screen.** The Live Session canvas shows a live fingertip cursor (a blue ring) — line it up with the
+  start dot, then trace. The paper trace area is the middle of the camera image.
+* **The hand is the ruler.** Without a height sensor, scale comes from your hand: the wrist → middle-knuckle distance of an average
+  adult hand (≈ 95 mm) in pixels (`HandRulerMapper` in `pi/scale.py`). Left/right is mirrored so moving right moves the cursor right
+  (`--no-mirror` to turn that off).
+* **Tips:** good front light, plain background, palm toward the camera, hand roughly 30–50 cm away so it fills about a third of the
+  frame. Keep the hand square to the camera (tilting shrinks the ruler and distorts mm).
+* **Accuracy limits (be honest about these):** MediaPipe's fingertip wobbles ~1–2 px and a non-average hand shifts the scale, so
+  expect a few mm of measurement noise — fine for Levels 1–2, rough for the ±1–1.5 mm levels. Tremor is still measured by the
+  wristband IMU, which is far more precise than the camera.
+* **macOS:** the first run asks for Camera permission for your terminal app (System Settings → Privacy & Security → Camera).
+* **No camera handy?** `--camera some_video.mp4` replays a video file (paced, looping) — useful for demos.
+* The Live Session camera card shows the preview with hand landmarks drawn on it.
+
 ## 5. Run everything (all local)
 ```
 npm run dev                                   # website  → http://localhost:3000
