@@ -1,4 +1,7 @@
-@import "tailwindcss";
+/* Tailwind's base/preflight layer is intentionally NOT imported: the design spec uses exact values
+   (e.g. line-height: normal) and says no framework defaults. Only theme + utilities are loaded. */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
 
 /* Brand tokens (design handoff). Dark-only by design. */
 :root {

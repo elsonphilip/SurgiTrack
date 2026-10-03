@@ -300,28 +300,6 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap", padding: "8px 0 4px" }}>
         <h1 className="head" style={{ margin: 0, fontSize: "clamp(34px,4vw,52px)", lineHeight: 1, letterSpacing: "-.01em" }}>Live Session</h1>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-          <details style={{ position: "relative" }}>
-            <summary className="ctl" style={{ cursor: "pointer", listStyle: "none" }}><span className="muted">Settings</span> ▾</summary>
-            <div style={{ position: "absolute", right: 0, top: 58, zIndex: 5, width: 280, background: "var(--card)", border: "1px solid var(--pill)", borderRadius: 20, padding: 18, display: "flex", flexDirection: "column", gap: 12, fontSize: 13.5 }}>
-              <label style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                Session length
-                <input type="number" min={5} max={40} value={settings.sessionLength} disabled={phase === "run"}
-                  onChange={(e) => setSettings((s) => ({ ...s, sessionLength: clamp(Number(e.target.value) || 12, 5, 40) }))}
-                  className="mono" style={{ width: 70, height: 34, borderRadius: 999, border: 0, background: "var(--pill)", color: "var(--cream)", padding: "0 12px" }} />
-              </label>
-              <label style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                Trace style
-                <select value={settings.traceStyle} onChange={(e) => setSettings((s) => ({ ...s, traceStyle: e.target.value as Settings["traceStyle"] }))}
-                  style={{ height: 34, borderRadius: 999, border: 0, background: "var(--pill)", color: "var(--cream)", padding: "0 10px" }}>
-                  <option value="heat">heat</option><option value="mono">mono</option>
-                </select>
-              </label>
-              <label style={{ display: "flex", justifyContent: "space-between" }}>Show tolerance band
-                <input type="checkbox" checked={settings.showTolerance} onChange={(e) => setSettings((s) => ({ ...s, showTolerance: e.target.checked }))} /></label>
-              <label style={{ display: "flex", justifyContent: "space-between" }}>Show camera
-                <input type="checkbox" checked={settings.showCamera} onChange={(e) => setSettings((s) => ({ ...s, showCamera: e.target.checked }))} /></label>
-            </div>
-          </details>
           <button className="ctl" onClick={() => setLevel(level % 5 + 1)} disabled={phase === "run"}>
             <span className="muted">Level:</span><b>L{level} {lv.name}</b><span className="muted" style={{ fontSize: 11 }}>▾</span>
           </button>
@@ -339,7 +317,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
             </div>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <span className="chip" title="No hardware connected — sensor data is generated in the browser" style={{ color: steel }}>SIMULATED</span>
-              <span className="chip">{live.time} s</span>
+              <span className="chip">{live.time}s</span>
               <span className="chip" style={{ background: hapticOn ? "var(--accent)" : "var(--pill)", gap: 8 }}>
                 <span style={{ width: 8, height: 8, borderRadius: "50%", background: hapticOn ? "var(--cream)" : steel }} />haptic × {live.pulses}
               </span>
@@ -354,7 +332,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
             {phase === "idle" && (
               <div style={{ position: "absolute", left: 16, bottom: 16, maxWidth: "min(380px,calc(100% - 32px))", padding: "14px 20px", borderRadius: 20, background: "rgba(18,56,45,.94)", display: "flex", flexDirection: "column", gap: 4 }}>
                 <div style={{ fontWeight: 700, fontSize: 15 }}>Trace the dashed path.</div>
-                <div style={{ fontSize: 13, color: "rgba(242,232,213,.75)", lineHeight: 1.45 }}>Stay inside the blue band. Leaving it vibrates the wristband. Calibration runs first.</div>
+                <div style={{ fontSize: 13, color: "rgba(242,232,213,.75)", lineHeight: 1.45, textWrap: "pretty" }}>Stay inside the blue band. Leaving it vibrates the wristband. Calibration runs first.</div>
               </div>
             )}
             {phase === "calib" && (
@@ -372,7 +350,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 14, flex: "1 1 260px", maxWidth: 420 }}>
                   <div className="head" style={{ fontSize: 30, lineHeight: 1.05 }}>{cal.title}</div>
-                  <div style={{ fontSize: 14.5, lineHeight: 1.5, color: "rgba(242,232,213,.8)" }}>{cal.body}</div>
+                  <div style={{ fontSize: 14.5, lineHeight: 1.5, color: "rgba(242,232,213,.8)", textWrap: "pretty" }}>{cal.body}</div>
                   {calStep === 2 && (
                     <div style={{ display: "flex", alignItems: "baseline", gap: 14 }}>
                       <span className="head" style={{ fontSize: 80, lineHeight: 1 }}>{calCount}</span>
@@ -499,6 +477,30 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
             <span style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ width: 12, height: 12, borderRadius: "50%", border: "3px solid #5AA4D6" }} />Accel Y</span>
           </div>
         </div>
+      </div>
+      <div style={{ display: "flex", justifyContent: "flex-start" }}>
+          <details style={{ position: "relative", alignSelf: "flex-start" }}>
+            <summary className="ctl" style={{ cursor: "pointer", listStyle: "none" }}><span className="muted">Settings</span> ▾</summary>
+            <div style={{ position: "absolute", left: 0, bottom: 58, zIndex: 5, width: 280, background: "var(--card)", border: "1px solid var(--pill)", borderRadius: 20, padding: 18, display: "flex", flexDirection: "column", gap: 12, fontSize: 13.5 }}>
+              <label style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                Session length
+                <input type="number" min={5} max={40} value={settings.sessionLength} disabled={phase === "run"}
+                  onChange={(e) => setSettings((s) => ({ ...s, sessionLength: clamp(Number(e.target.value) || 12, 5, 40) }))}
+                  className="mono" style={{ width: 70, height: 34, borderRadius: 999, border: 0, background: "var(--pill)", color: "var(--cream)", padding: "0 12px" }} />
+              </label>
+              <label style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                Trace style
+                <select value={settings.traceStyle} onChange={(e) => setSettings((s) => ({ ...s, traceStyle: e.target.value as Settings["traceStyle"] }))}
+                  style={{ height: 34, borderRadius: 999, border: 0, background: "var(--pill)", color: "var(--cream)", padding: "0 10px" }}>
+                  <option value="heat">heat</option><option value="mono">mono</option>
+                </select>
+              </label>
+              <label style={{ display: "flex", justifyContent: "space-between" }}>Show tolerance band
+                <input type="checkbox" checked={settings.showTolerance} onChange={(e) => setSettings((s) => ({ ...s, showTolerance: e.target.checked }))} /></label>
+              <label style={{ display: "flex", justifyContent: "space-between" }}>Show camera
+                <input type="checkbox" checked={settings.showCamera} onChange={(e) => setSettings((s) => ({ ...s, showCamera: e.target.checked }))} /></label>
+            </div>
+          </details>
       </div>
     </>
   );
