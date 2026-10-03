@@ -15,7 +15,7 @@ const DEFS = [
 
 const CHIPS = [
   ["Input", "6-ch IMU · 2 s windows"],
-  ["Model", "1D-CNN on Pi"],
+  ["Model", "LightGBM on Pi"],
   ["Split", "80 / 20 by participant"],
   ["Classes", "typical · elevated · refer"],
   ["Test acc.", "pending dataset"],

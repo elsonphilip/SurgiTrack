@@ -2,3 +2,6 @@ numpy
 scipy
 pyserial
 pytest
+pandas
+scikit-learn
+lightgbm

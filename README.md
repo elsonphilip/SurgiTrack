@@ -9,7 +9,8 @@ feedback (DRV2605L). A Pi camera + MediaPipe Hands tracks path; the IMU is the p
 - [x] Arduino IMU streamer (untested on hardware)
 - [x] Recorder, calibration, tremor features (+ tests)
 - [x] Web app (`web/`): profiles, sessions, leaderboard, 5 progress charts, session API
-- [ ] Collect real data → train classifier (split by user)
+- [x] ML pipeline (`pi/train.py`): window features → threshold baseline vs Random Forest vs LightGBM, evaluated on held-out participants
+- [ ] Collect real recordings, then run `python train.py`
 - [ ] MediaPipe path tracking, haptics, Pi → site uploader
 
 ## Quick start
@@ -18,6 +19,20 @@ cd pi && pip install -r requirements.txt && pytest
 python recorder.py --port /dev/ttyACM0 --user u01 --task steady_hold --label steady --seconds 30
 ```
 Not a medical device; any Parkinson's indication is a screening signal, not a diagnosis.
+
+## Tremor model (`pi/`)
+```
+BMI270/camera → raw time series → high-pass filter + 2 s windows → features → LightGBM → tremor probability
+```
+Features (`windows.py`): accel/gyro mean·std·RMS, angular velocity, jerk, dominant frequency, 4–6 / 6–12 Hz and
+high-frequency (12–30 Hz) energy, tremor-band ratio, spectral entropy; plus hand velocity, smoothness (LDLJ), path
+deviation and time outside tolerance when camera/path columns are present.
+
+`python train.py` compares a **threshold baseline**, **Random Forest** and **LightGBM** on the same features, reporting
+accuracy, precision, recall, F1, false-positive rate and inference time per window on **held-out participants**
+(plus grouped cross-validation). It refuses to run on synthetic data or with fewer than 5 participants, and saves
+`models/lgbm.txt` for `infer.py`. Tests (`pytest`) use generated signals only to check the code, never to train.
+Labels: `steady` = 0; `simulated_tremor` / `clinical_tremor` = 1; other labels are skipped.
 
 ## Website (`web/`)
 Next.js, custom SVG/canvas charts, JSON-file storage in `web/data/` (gitignored). UI follows the design handoff
