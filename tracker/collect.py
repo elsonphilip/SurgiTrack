@@ -77,6 +77,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--port")
     ap.add_argument("--list-ports", action="store_true")
+    ap.add_argument("--raw", action="store_true", help="print the first few raw lines from the port, to see what the board sends")
     ap.add_argument("--baud", type=int, default=460800, help="serial speed; must match Serial.begin() in the sketch")
     ap.add_argument("--time-unit", choices=["us", "ms"], default="us", help="unit of the first column: micros() = us, millis() = ms")
     ap.add_argument("--check", action="store_true", help="record 3 s and report whether the stream looks healthy")
@@ -87,6 +88,23 @@ def main():
     ap.add_argument("--repeats", type=int, default=3, help="recordings per label")
     a = ap.parse_args()
 
+    if a.raw:
+        if not a.port:
+            ap.error("--raw needs --port")
+        import serial
+
+        with serial.Serial(a.port, a.baud, timeout=1) as ser:
+            print(f"Reading {a.port} at {a.baud} baud for 4 s ...")
+            lines = [ser.readline() for _ in range(4)] + [ser.readline() for _ in range(8)]
+        got = [l.decode("ascii", errors="replace").rstrip() for l in lines if l]
+        if not got:
+            print("NOTHING received. The board is silent: sketch not uploaded / FOR_PI is false / stuck waiting for the IMU / wrong port.")
+        for g in got[:10]:
+            print("  ", repr(g))
+        if got:
+            print("Expected lines like  123456,0.01,-0.02,0.99,1.2,-0.3,0.5  (time,ax,ay,az,gx,gy,gz). "
+                  "Garbled characters = wrong --baud. Lines starting 'tremor:' = FOR_PI is false.")
+        return
     if a.list_ports:
         from serial.tools import list_ports
 

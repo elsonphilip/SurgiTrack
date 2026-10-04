@@ -152,6 +152,8 @@ class HardwareRig:
         self.time_unit, self.protocol = time_unit, protocol  # protocol "trainer" = the standalone sketch: B = buzz, D = double click
         self.has_camera = tracker is not None
         self.q = queue.Queue(maxsize=4000)
+        self.n_lines = self.n_bad = 0   # lines read from the port / lines that did not parse (for the "no data" message)
+        self.last_bad = ""
         self._dist, self._t0 = 14.0, None
         self._stop = False
         threading.Thread(target=self._read_serial, daemon=True).start()
@@ -160,9 +162,14 @@ class HardwareRig:
     def _read_serial(self):
         while not self._stop:
             try:
-                parsed = parse_line(self.ser.readline().decode("ascii", errors="ignore"), self.time_unit)
+                text = self.ser.readline().decode("ascii", errors="ignore")
+                parsed = parse_line(text, self.time_unit)
             except Exception:
                 continue
+            if text.strip():
+                self.n_lines += 1
+                if not parsed:
+                    self.n_bad, self.last_bad = self.n_bad + 1, text.strip()[:80]
             if parsed:
                 try:
                     self.q.put_nowait(parsed)
@@ -172,8 +179,18 @@ class HardwareRig:
     def latest_jpeg(self):
         return self.cam.jpeg if self.cam else None
 
+    def no_data_message(self):
+        if self.n_lines == 0:
+            return ("no data from the band in 2 s. Check: the sketch has FOR_PI = true and is uploaded, the Serial Monitor is closed, "
+                    "and the board is not stuck waiting for the IMU (check wiring). Run: python tracker/collect.py --port <PORT> --raw --baud 115200")
+        return (f"the band is sending data but none of it is readable ({self.n_bad} of {self.n_lines} lines rejected, last: {self.last_bad!r}). "
+                "Check --baud and --time-unit match the sketch, and that FOR_PI = true.")
+
     def read(self, target_mm, running):
-        t_us, imu, dist = self.q.get(timeout=2.0)
+        try:
+            t_us, imu, dist = self.q.get(timeout=2.0)
+        except queue.Empty:
+            raise RuntimeError(self.no_data_message()) from None
         if dist is not None:
             self._dist = dist
         if self._t0 is None:

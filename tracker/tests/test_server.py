@@ -107,3 +107,17 @@ def test_trainer_sketch_protocol():
     assert sent == [b"B\n", b"B\n", b"B\n", b"D\n"]
     rig.ser.write = lambda b: None
     rig.close()
+
+
+def test_no_data_message_explains_what_to_check():
+    import pytest
+    from rig import HardwareRig
+
+    rig = HardwareRig("loop://", baud=115200, time_unit="ms", protocol="trainer")
+    rig.ser.write = lambda b: None
+    rig.n_lines = rig.n_bad = 0
+    assert "FOR_PI" in rig.no_data_message()
+    rig.n_lines, rig.n_bad, rig.last_bad = 5, 5, "tremor:0.0100 limit:0.0100"
+    msg = rig.no_data_message()
+    assert "tremor:0.0100" in msg and "baud" in msg
+    rig.close()
