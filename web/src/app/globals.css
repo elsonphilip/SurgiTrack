@@ -121,8 +121,11 @@ summary.ctl::-webkit-details-marker { display: none; }
 .badge-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
 .badge { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 22px; background: var(--pill); transition: transform .15s, background-color .15s; }
 .badge:hover { transform: translateY(-2px); background: var(--pill-hover); }
-.badge.locked { opacity: 0.45; filter: grayscale(0.7); }
-.badge-ico { flex: none; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-family: var(--font-head); background: linear-gradient(135deg, var(--accent), var(--steel)); color: var(--on-accent); }
+.badge.locked { opacity: 0.5; }
+.badge.locked .badge-svg { filter: grayscale(1) brightness(.8); }
+.badge-svg { flex: none; display: block; filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.35)); }
+.badge:not(.locked):hover .badge-svg { transform: rotate(-6deg) scale(1.08); }
+.badge-svg { transition: transform .18s; }
 
 @keyframes st-confetti { 0% { transform: translate3d(0, -20px, 0) rotate(0); opacity: 1; } 100% { transform: translate3d(var(--dx), 420px, 0) rotate(var(--rot)); opacity: 0; } }
 @keyframes st-pop { 0% { transform: scale(0.2) rotate(-20deg); opacity: 0; } 70% { transform: scale(1.25) rotate(6deg); opacity: 1; } 100% { transform: scale(1) rotate(0); } }

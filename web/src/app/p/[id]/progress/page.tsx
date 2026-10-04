@@ -5,6 +5,7 @@ import { coachingTip, gradeWord } from "@/lib/coach";
 import { getGame, getView } from "@/lib/view-server";
 import { badgesFor, rankFor, totalXp } from "@/lib/game";
 import { PageHeader } from "@/components/PageHeader";
+import { BadgeIcon } from "@/components/BadgeIcon";
 import { BleedLines, CardHead, DotMatrix, LEGEND_DOT, Stat, fmtDate, svgLine } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
@@ -30,7 +31,7 @@ export default async function Progress({ params }: PageProps<"/p/[id]/progress">
       <div className="badge-grid">
         {badges.map((b) => (
           <div key={b.id} className={`badge${b.earned ? "" : " locked"}`} title={b.desc}>
-            <span className="badge-ico">{b.earned ? "★" : "?"}</span>
+            <BadgeIcon id={b.id} />
             <div><div style={{ fontWeight: 700, fontSize: 14 }}>{b.name}</div><div style={{ fontSize: 12, color: "rgba(166,202,200,.7)" }}>{b.desc}</div></div>
           </div>
         ))}
