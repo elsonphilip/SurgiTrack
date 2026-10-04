@@ -177,8 +177,10 @@ export function drawSpace(g: G, r: Scene, now: number, d: Dims) {
   }
   const msg = now - gm.perfect < 1100 ? ["Perfect section!", gm.perfect] : now - gm.gateFlash < 900 ? ["Gate cleared!", gm.gateFlash] : null;
   if (msg && r.phase === "run") {
-    const a = 1 - (now - (msg[1] as number)) / 1100;
-    g.save(); g.globalAlpha = Math.max(0, a); g.textAlign = "center"; g.font = "800 26px Montserrat, sans-serif"; g.fillStyle = "#8ff0c8"; g.shadowColor = "#8ff0c8"; g.shadowBlur = 16;
-    g.fillText(msg[0] as string, W / 2, 24 - (1 - a) * 8); g.restore();
+    const age = now - (msg[1] as number), a = Math.max(0, 1 - age / 1100), y = 56 + age / 60; // drifts down gently, well inside the canvas
+    g.save(); g.globalAlpha = a; g.textAlign = "center"; g.textBaseline = "middle"; g.font = "800 24px Montserrat, sans-serif";
+    const w = g.measureText(msg[0] as string).width + 36;
+    g.fillStyle = "rgba(11,13,36,.72)"; g.beginPath(); g.roundRect(W / 2 - w / 2, y - 22, w, 44, 22); g.fill();
+    g.fillStyle = "#8ff0c8"; g.shadowColor = "#8ff0c8"; g.shadowBlur = 14; g.fillText(msg[0] as string, W / 2, y + 1); g.restore();
   }
 }
