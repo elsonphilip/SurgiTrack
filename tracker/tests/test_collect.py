@@ -79,3 +79,29 @@ def test_inventory_and_readiness(tmp_path):
     assert len(todo) == 1 and "missing a class" in todo[0] and "e" in todo[0]
     meta("e", "simulated_tremor")
     assert inventory.readiness(inventory.inventory(tmp_path)[0]) == []
+
+
+def test_serial_source_accepts_millis_timestamps_and_seven_fields(monkeypatch):
+    import serial as pyserial
+    from sources import serial_source
+
+    lines = [b"1000,0.01,0.02,1.0,1,2,3\n", b"1005,0.01,0.02,1.0,1,2,3\n", b"garbage\n", b"1010,0.01,0.02,1.0,1,2,3\n"]
+
+    class Fake:
+        def __init__(self, *a, **k): self.i = 0
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def readline(self):
+            if self.i >= len(lines):
+                raise StopIteration
+            self.i += 1
+            return lines[self.i - 1]
+
+    monkeypatch.setattr(pyserial, "Serial", Fake)
+    got = []
+    try:
+        for row in serial_source("x", baud=115200, time_unit="ms"):
+            got.append(row)
+    except (StopIteration, RuntimeError):
+        pass
+    assert [round(r[0], 4) for r in got] == [0.0, 0.005, 0.01]

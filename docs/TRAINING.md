@@ -21,6 +21,15 @@ python3 tracker/collect.py --port /dev/cu.usbmodem1101 --check
 ```
 You want `✓ stream looks healthy` (≈200 Hz, no gaps, gravity ≈ 1 g). If it complains, fix that first — bad recordings poison training.
 
+### Using your own sketch (7-field stream with millis())
+`collect.py` reads lines of `time,ax,ay,az,gx,gy,gz` (an 8th distance column is ignored). If your sketch prints `millis()`
+instead of `micros()`, or uses a different baud rate, say so:
+```
+python tracker/collect.py --port /dev/cu.usbmodem1101 --check --baud 115200 --time-unit ms
+```
+Prefer `micros()` and 460800 baud when you can: millisecond timestamps are coarse at 200 Hz, and 115200 baud leaves very
+little headroom for 200 lines per second.
+
 ## 3. Record participants (about 4 minutes each)
 ```
 python3 tracker/collect.py --port /dev/cu.usbmodem1101 --user p01

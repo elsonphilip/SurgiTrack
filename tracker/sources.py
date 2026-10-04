@@ -6,8 +6,10 @@ import time
 FIELDS = ["t_s", "ax", "ay", "az", "gx", "gy", "gz"]
 
 
-def serial_source(port, baud=460800):
-    """Read the Arduino stream. Skips '#' comment lines and malformed lines."""
+def serial_source(port, baud=460800, time_unit="us"):
+    """Read the Arduino stream. Skips '#' comment lines and malformed lines.
+
+    time_unit: units of the first field, "us" (micros(), the repo firmware) or "ms" (millis())."""
     import serial
 
     t0_us = None
@@ -28,7 +30,7 @@ def serial_source(port, baud=460800):
                 continue
             if t0_us is None:
                 t0_us = t_us
-            yield ((t_us - t0_us) / 1e6, *vals)
+            yield ((t_us - t0_us) / (1e3 if time_unit == "ms" else 1e6), *vals)
 
 
 def simulated_source(rate_hz=200, tremor_hz=0.0, tremor_amp_g=0.0, seed=0, realtime=True):

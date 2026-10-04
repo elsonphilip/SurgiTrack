@@ -77,6 +77,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--port")
     ap.add_argument("--list-ports", action="store_true")
+    ap.add_argument("--baud", type=int, default=460800, help="serial speed; must match Serial.begin() in the sketch")
+    ap.add_argument("--time-unit", choices=["us", "ms"], default="us", help="unit of the first column: micros() = us, millis() = ms")
     ap.add_argument("--check", action="store_true", help="record 3 s and report whether the stream looks healthy")
     ap.add_argument("--simulate", action="store_true")
     ap.add_argument("--out", help="output dir (required with --simulate)")
@@ -97,7 +99,7 @@ def main():
         # steady and shaky fakes alternate so a dry run exercises both labels
         source, kind, out_dir = simulated_source(realtime=False), "synthetic", Path(a.out)
     elif a.port:
-        source, kind, out_dir = serial_source(a.port), "device", RAW_DIR
+        source, kind, out_dir = serial_source(a.port, a.baud, a.time_unit), "device", RAW_DIR
     else:
         ap.error("pass --port (or --simulate / --list-ports)")
 
