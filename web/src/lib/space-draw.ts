@@ -4,7 +4,7 @@ import type { Decor } from "./space";
 export const GATES = [0.25, 0.5, 0.75] as const;
 export interface SpaceGame { combo: number; streak: number; points: number; chain: number; hull: number; gates: (boolean | null)[]; gateFlash: number; perfect: number; flash: number; broke: number; heading: number }
 export interface Scene {
-  phase: string; level: number; mode: string; hapKind: string | null; hapUntil: number; bandNow: number;
+  phase: string; level: number; mode: string; hapKind: string | null; hapUntil: number;
   pts: number[][]; trace: [number, number, boolean][]; cursor: [number, number] | null; decor: Decor[]; g: SpaceGame;
   settings: { showTolerance: boolean; traceStyle: string };
 }
@@ -116,7 +116,6 @@ export function drawSpace(g: G, r: Scene, now: number, d: Dims) {
     dashedPath(g, P); g.strokeStyle = "rgba(90,164,214,.10)"; g.lineWidth = tol * 2 * PX + 16; g.stroke();
     dashedPath(g, P); g.strokeStyle = "rgba(90,164,214,.26)"; g.lineWidth = tol * 2 * PX; g.stroke();
   }
-  if (r.phase === "run" && r.bandNow !== 1) { dashedPath(g, P); g.strokeStyle = "rgba(227,168,87,.32)"; g.lineWidth = tol * 2 * r.bandNow * PX; g.stroke(); }
   g.save(); g.shadowColor = "#a6cac8"; g.shadowBlur = 8; g.setLineDash([2, 11]); dashedPath(g, P); g.strokeStyle = "rgba(220,240,240,.9)"; g.lineWidth = 2.4; g.stroke(); g.restore();
 
   // gates

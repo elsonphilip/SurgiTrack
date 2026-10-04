@@ -20,7 +20,6 @@ export function Confetti({ n = 44 }: { n?: number }) {
 }
 
 interface Props {
-  challenge: string;
   level: number;
   chain: number;
   acc: number;
@@ -41,7 +40,7 @@ interface Props {
   onProgress: () => void;
 }
 
-export function GameResult({ challenge, level, chain, acc, time, detail, trainingScore, hull, gates, metrics, points, bestCombo, counted, isBest, promoted, demo, onAgain, onProgress }: Props) {
+export function GameResult({ level, chain, acc, time, detail, trainingScore, hull, gates, metrics, points, bestCombo, counted, isBest, promoted, demo, onAgain, onProgress }: Props) {
   const { xp } = useLive();
   const parts = missionParts(metrics, level);
   const score = parts.score;
@@ -53,7 +52,7 @@ export function GameResult({ challenge, level, chain, acc, time, detail, trainin
     <>
       {n >= 2 && <Confetti />}
       <div style={{ display: "flex", flexDirection: "column", gap: 10, alignItems: "flex-start" }}>
-        <span className="head muted" style={{ fontSize: 16, letterSpacing: ".04em" }}>Mission {level} · {missionName(level)} · {challenge}</span>
+        <span className="head muted" style={{ fontSize: 16, letterSpacing: ".04em" }}>Mission {level} · {missionName(level)}</span>
         <span className="head" style={{ fontSize: 22 }}>{headline}</span>
         <div aria-label={`${n} of 3 stars`}>
           {[1, 2, 3].map((i) => <span key={i} className={`star${i <= n ? "" : " off"}`} style={{ animationDelay: `${i * 0.18}s`, color: i <= n ? "var(--warn)" : "var(--cream)" }}>★</span>)}

@@ -65,31 +65,5 @@ export function badgesFor(ss: Pick<Session, "score" | "accuracy" | "tremor" | "s
   ];
 }
 
-/**
- * Challenges are rules for points, combos and which path you get. They never change how accuracy, tremor,
- * smoothness or the score are measured, so every run still produces the same data for the model.
- */
-export type ChallengeId = "rush" | "steady" | "maze" | "trace" | "survival" | "zen";
-export interface Challenge {
-  id: ChallengeId;
-  name: string;
-  tagline: string;
-  /** Which path to use: the player's chosen one, a new random one each run, or the most complex one for the level. */
-  path: "chosen" | "shuffle" | "hardest";
-  /** Game band as a multiple of the level tolerance, at run progress p (0..1). Leaving it breaks the combo. */
-  band: (p: number) => number;
-  /** Zen: sudden jerks also break the combo. */
-  calm?: boolean;
-}
-export const CHALLENGES: readonly Challenge[] = [
-  { id: "rush", name: "Precision Rush", tagline: "Fly the trajectory accurately. Every hit builds your combo.", path: "chosen", band: () => 1 },
-  { id: "steady", name: "Steady Hand", tagline: "A tighter corridor. Keep the ship inside it.", path: "chosen", band: () => 0.6 },
-  { id: "maze", name: "Maze", tagline: "A new route every run.", path: "shuffle", band: () => 1 },
-  { id: "trace", name: "Trace", tagline: "The most complex shape for your level.", path: "hardest", band: () => 1 },
-  { id: "survival", name: "Survival", tagline: "The corridor closes in as you fly.", path: "chosen", band: (p) => 1.6 - p },
-  { id: "zen", name: "Zen", tagline: "Smooth and calm. Sudden jerks break the chain.", path: "chosen", band: () => 1.2, calm: true },
-];
-export const challengeById = (id: string): Challenge => CHALLENGES.find((c) => c.id === id) ?? CHALLENGES[0];
-
 /** One "hit" every HIT_S seconds spent inside the game band. */
 export const HIT_S = 0.25;

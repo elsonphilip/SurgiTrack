@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LEVELS } from "@/lib/scoring";
-import { CHALLENGES, COMBO_MAX, COMBO_STEP_S, HIT_S, challengeById, type Challenge, type ChallengeId } from "@/lib/game";
+import { COMBO_MAX, COMBO_STEP_S, HIT_S } from "@/lib/game";
 import { coachingTip, gradeWord, smoothWord, tremorWord } from "@/lib/coach";
 import { defaultPath, getPath, pathsForLevel, samplePath, type PathDef } from "@/lib/paths";
 import type { RawSample } from "@/lib/types";
@@ -24,21 +24,19 @@ const W = 960, H = 480, PX = 8; // canvas logical size; 8 px = 1 mm
 const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
 const rnd = () => Math.random() - 0.5;
 /** Game mode: combo multiplier (+1 per COMBO_STEP_S inside the band, max x5) and run points. Cosmetic only, never saved. */
-interface GameState { t: number; streak: number; points: number; combo: number; best: number; flash: number; hitAcc: number; chain: number; bestChain: number; speed: number; broke: number; hull: number; gates: (boolean | null)[]; gateFlash: number; perfect: number; heading: number; sec: number; secN: number; secOut: number }
-const newGame = (now: number): GameState => ({ t: now, streak: 0, points: 0, combo: 1, best: 1, flash: 0, hitAcc: 0, chain: 0, bestChain: 0, speed: 0, broke: 0, hull: 100, gates: [null, null, null], gateFlash: 0, perfect: 0, heading: -Math.PI / 2, sec: 0, secN: 0, secOut: 0 });
-/** `inBand` = inside this challenge's game band; `speed` = fingertip speed in mm/s (Zen punishes sudden changes). */
-function gameStep(g: GameState, inBand: boolean, now: number, c: Challenge, speed = 0, p = 0) {
+interface GameState { t: number; streak: number; points: number; combo: number; best: number; flash: number; hitAcc: number; chain: number; bestChain: number; broke: number; hull: number; gates: (boolean | null)[]; gateFlash: number; perfect: number; heading: number; sec: number; secN: number; secOut: number }
+const newGame = (now: number): GameState => ({ t: now, streak: 0, points: 0, combo: 1, best: 1, flash: 0, hitAcc: 0, chain: 0, bestChain: 0, broke: 0, hull: 100, gates: [null, null, null], gateFlash: 0, perfect: 0, heading: -Math.PI / 2, sec: 0, secN: 0, secOut: 0 });
+/** `inBand` = inside the corridor; `p` = run progress 0..1. Cosmetic only: nothing here is saved or scored. */
+function gameStep(g: GameState, inBand: boolean, now: number, p = 0) {
   const dt = clamp((now - g.t) / 1000, 0, 0.2);
   g.t = now;
-  const jerk = c.calm && Math.abs(speed - g.speed) / Math.max(dt, 0.016) > 400; // mm/s per s
-  g.speed = speed;
   // gates (passing one inside the corridor scores a bonus) and sections (a clean quarter earns a "perfect section")
   GATES.forEach((f, i) => { if (g.gates[i] === null && p >= f) { g.gates[i] = inBand; if (inBand) { g.gateFlash = now; g.points += 50; } } });
   const sec = Math.min(3, Math.floor(p * 4));
   if (sec !== g.sec) { if (g.secN >= 5 && g.secOut === 0) g.perfect = now; g.sec = sec; g.secN = g.secOut = 0; }
-  g.secN++; if (!inBand || jerk) g.secOut++;
-  if (!inBand || jerk) g.hull = Math.max(0, g.hull - 20 * dt);
-  if (!inBand || jerk) {
+  g.secN++; if (!inBand) g.secOut++;
+  if (!inBand) g.hull = Math.max(0, g.hull - 20 * dt);
+  if (!inBand) {
     if (g.chain > 0) g.broke = now;
     g.streak = 0; g.combo = 1; g.chain = 0; g.hitAcc = 0;
     return;
@@ -64,8 +62,8 @@ interface Result {
   screening?: { tremorProbability: number }; demo?: boolean;
 }
 export interface LastSession { acc: number; dev: number; trem: number; smooth: number }
-interface Settings { sessionLength: number; traceStyle: "heat" | "mono"; showTolerance: boolean; showCamera: boolean; pathId: string; source: "sim" | "pi"; piUrl: string; challenge: ChallengeId }
-const DEFAULTS: Settings = { sessionLength: 12, traceStyle: "heat", showTolerance: true, showCamera: true, pathId: "", source: "sim", piUrl: "ws://localhost:8765", challenge: "rush" };
+interface Settings { sessionLength: number; traceStyle: "heat" | "mono"; showTolerance: boolean; showCamera: boolean; pathId: string; source: "sim" | "pi"; piUrl: string }
+const DEFAULTS: Settings = { sessionLength: 12, traceStyle: "heat", showTolerance: true, showCamera: true, pathId: "", source: "sim", piUrl: "ws://localhost:8765" };
 
 /** "" = the level's original design path, "shuffle" = random path from the level each run, else a path id. */
 function resolvePath(level: number, pathId: string, avoidId?: string): PathDef {
@@ -77,16 +75,8 @@ function resolvePath(level: number, pathId: string, avoidId?: string): PathDef {
   const p = pathId ? getPath(pathId) : undefined;
   return p && p.level === level ? p : defaultPath(level);
 }
-/** Game challenges can override the path choice (Maze = shuffle, Trace = hardest for the level). */
-function effectivePathId(r: { settings: Settings; game: boolean }, level: number): string {
-  if (!r.game) return r.settings.pathId;
-  const c = challengeById(r.settings.challenge);
-  if (c.path === "shuffle") return "shuffle";
-  if (c.path === "hardest") { const l = pathsForLevel(level); return l[l.length - 1]?.id ?? ""; }
-  return r.settings.pathId;
-}
-function cachePath(r: { settings: Settings; game: boolean; path: PathDef; pts: number[][]; decor: Decor[] }, level: number) {
-  r.path = resolvePath(level, effectivePathId(r, level), r.path.id);
+function cachePath(r: { settings: Settings; path: PathDef; pts: number[][]; decor: Decor[] }, level: number) {
+  r.path = resolvePath(level, r.settings.pathId, r.path.id);
   r.pts = samplePath(r.path, 320);
   r.decor = makeDecor(level, r.pts, LEVELS[level - 1].toleranceMm * PX);
 }
@@ -163,7 +153,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
   const R = useRef({
     phase: (autoStart ? "calib" : "idle") as Phase, level, calStep: 0, trace: [] as [number, number, boolean][], pts: [] as number[][], path: defaultPath(Math.min(Math.max(startLevel, 1), 5)),
     acc: { n: 0, in: 0, dev: 0, tr: 0, pulses: 0 }, wasOut: false, hapUntil: 0, t0: 0, m0: 0, lastUi: 0,
-    g: newGame(0), game: false, decor: [] as Decor[], hapKind: null as string | null, challenge: "rush" as ChallengeId, bandNow: 1, hx: [] as number[], hy: [] as number[], raw: [] as RawSample[], settings: DEFAULTS, mode: "sim" as "sim" | "pi", ws: null as WebSocket | null, cursor: null as [number, number] | null, ct: 0 as unknown as ReturnType<typeof setInterval>,
+    g: newGame(0), game: false, decor: [] as Decor[], hapKind: null as string | null, hx: [] as number[], hy: [] as number[], raw: [] as RawSample[], settings: DEFAULTS, mode: "sim" as "sim" | "pi", ws: null as WebSocket | null, cursor: null as [number, number] | null, ct: 0 as unknown as ReturnType<typeof setInterval>,
   });
 
   const setPhase = (p: Phase) => {
@@ -172,11 +162,11 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
   };
   useEffect(() => {
     const r = R.current;
-    r.game = game; r.settings = { ...r.settings, challenge: settings.challenge };
+    r.game = game;
     if (r.phase === "run") return;
     cachePath(r, r.level); r.trace = []; setActivePath(r.path.id);
     if (r.mode === "pi") piSend(r, { cmd: "set", userId: profileId, level: r.level, pathId: r.path.id, sessionLength: r.settings.sessionLength, game: r.game });
-  }, [game, settings.challenge, profileId]);
+  }, [game, profileId]);
 
   useEffect(() => {
     try {
@@ -226,7 +216,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
 
   const startRun = () => {
     const r = R.current;
-    r.trace = []; r.raw = []; r.acc = { n: 0, in: 0, dev: 0, tr: 0, pulses: 0 }; r.wasOut = false; r.t0 = performance.now(); r.g = newGame(r.t0); r.bandNow = 1;
+    r.trace = []; r.raw = []; r.acc = { n: 0, in: 0, dev: 0, tr: 0, pulses: 0 }; r.wasOut = false; r.t0 = performance.now(); r.g = newGame(r.t0);
     setResult(null); setError(null);
     setPhase("run");
   };
@@ -236,13 +226,13 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
     R.current.calStep = 0;
     if (R.current.mode === "pi") {
       const r = R.current;
-      if (effectivePathId(r, r.level) === "shuffle") { cachePath(r, r.level); setActivePath(r.path.id); }
+      if (r.settings.pathId === "shuffle") { cachePath(r, r.level); setActivePath(r.path.id); }
       piSend(r, { cmd: "set", userId: profileId, level: r.level, pathId: r.path.id, sessionLength: r.settings.sessionLength, game: r.game });
       piSend(r, { cmd: "calibrate" });
       setResult(null); setError(null);
       return;
     }
-    if (effectivePathId(R.current, R.current.level) === "shuffle") { cachePath(R.current, R.current.level); setActivePath(R.current.path.id); }
+    if (R.current.settings.pathId === "shuffle") { cachePath(R.current, R.current.level); setActivePath(R.current.path.id); }
     setCalStep(0); setCalCount(5); setResult(null); setError(null); setLive(EMPTY);
     R.current.phase = "calib"; setPhaseS("calib");
   }, [profileId]);
@@ -294,7 +284,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
       } else if (m.type === "state") {
         r.calStep = m.calStep; setCalStep(m.calStep); setCalCount(m.calCount); setNoise(Number(m.noise).toFixed(3));
         if (m.phase !== r.phase) {
-          if (m.phase === "run") { r.trace = []; r.g = newGame(performance.now()); r.bandNow = 1; setResult(null); setError(null); }
+          if (m.phase === "run") { r.trace = []; r.g = newGame(performance.now()); setResult(null); setError(null); }
           if (m.phase === "idle") { r.trace = []; setLive(EMPTY); }
           if (m.phase === "done") setSaving(true);
           setPhase(m.phase);
@@ -313,11 +303,8 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
         setHandLost(!m.finger);
         if (m.phase === "run") {
           setLive({ acc: m.acc == null ? "--" : String(Math.round(m.acc)), dev: m.dev == null ? "--" : Number(m.dev).toFixed(1), trem: Number(m.trem).toFixed(1), smooth: String(m.smooth), time: Number(m.time).toFixed(1), pct: m.pct, pulses: m.pulses });
-          if (m.finger && r.trace.length < 5000) { r.trace.push([m.finger[0] * PX, m.finger[1] * PX, !!m.out]); const c = challengeById(r.settings.challenge), now = performance.now(), p = clamp((m.pct ?? 0) / 100, 0, 1);
-            const band = c.band(p); r.bandNow = band;
-            const tolMm = LEVELS[r.level - 1].toleranceMm, inBand = m.dev == null ? !m.out : Number(m.dev) <= tolMm * band;
-            const pv = r.trace.length > 1 ? r.trace[r.trace.length - 2] : null, last = r.trace[r.trace.length - 1];
-            gameStep(r.g, inBand, now, c, pv ? Math.hypot(last[0] - pv[0], last[1] - pv[1]) / PX * 30 : 0, p); }
+          if (m.finger && r.trace.length < 5000) { r.trace.push([m.finger[0] * PX, m.finger[1] * PX, !!m.out]); const now = performance.now(), p = clamp((m.pct ?? 0) / 100, 0, 1);
+            gameStep(r.g, m.dev == null ? !m.out : Number(m.dev) <= LEVELS[r.level - 1].toleranceMm, now, p); }
         }
       } else if (m.type === "result") {
         setSaving(false);
@@ -417,9 +404,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
         for (const p of r.pts) { const d = (p[0] - x) ** 2 + (p[1] - y) ** 2; if (d < md) md = d; }
         const devNow = Math.sqrt(md) / PX, out = devNow > tol;
         r.trace.push([x, y, out]);
-        { const c = challengeById(r.settings.challenge), band = c.band(tt); r.bandNow = band;
-          const pv = r.trace.length > 1 ? r.trace[r.trace.length - 2] : null;
-          gameStep(r.g, devNow <= tol * band, now, c, pv ? Math.hypot(x - pv[0], y - pv[1]) / PX * 60 : 0, tt); }
+        gameStep(r.g, devNow <= tol, now, tt);
         const A = r.acc;
         A.n++; if (!out) A.in++; A.dev += devNow; A.tr += (trAmp * 0.707) ** 2;
         if (out && !r.wasOut) A.pulses++;
@@ -509,17 +494,8 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
           </div>
 
           {game && (phase === "idle" || phase === "done") && (
-            <div role="radiogroup" aria-label="Challenge" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {CHALLENGES.map((c) => {
-                const on = settings.challenge === c.id;
-                return (
-                  <button key={c.id} role="radio" aria-checked={on} onClick={() => setSettings((st) => ({ ...st, challenge: c.id }))} title={c.tagline}
-                    className="hov" style={{ border: 0, cursor: "pointer", height: 38, padding: "0 16px", borderRadius: 999, fontSize: 13, fontWeight: 700, background: on ? "var(--accent)" : "var(--pill)", color: on ? "var(--on-accent)" : "var(--cream)" }}>
-                    {c.name}
-                  </button>
-                );
-              })}
-              <span style={{ flexBasis: "100%", fontSize: 13, color: "rgba(166,202,200,.8)", textWrap: "pretty" }}><b style={{ color: "var(--cream)" }}>Mission {level}: {missionName(level)}.</b> {MISSION_BLURB[level - 1]} {challengeById(settings.challenge).tagline} Challenges change points, combos and the route; accuracy, tremor and smoothness are measured the same way every time.</span>
+            <div style={{ fontSize: 13.5, color: "rgba(166,202,200,.85)", textWrap: "pretty" }}>
+              <b style={{ color: "var(--cream)" }}>Mission {level}: {missionName(level)}.</b> {MISSION_BLURB[level - 1]} Stay in the glowing corridor, fly through the gates and keep the hull intact. Accuracy, tremor and smoothness are measured the same way as in Standard mode.
             </div>
           )}
           {simple && phase === "idle" && (
@@ -593,7 +569,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
                   </div>
                 )}
                 {result && game && (
-                  <GameResult challenge={challengeById(settings.challenge).name} level={level} hull={gameStats.hull} gates={gameStats.gates} metrics={{ accuracy: result.acc, smoothness: result.smooth, tremor: result.trem, completionTimeS: result.time }} chain={gameStats.chain} acc={result.acc} time={result.time} detail={simple ? undefined : [["Deviation", `${result.dev} mm`], ["Tremor", `${result.trem}/10`], ["Smoothness", String(result.smooth)], ["Haptic", `${result.pulses}×`]]} trainingScore={result.score} points={gameStats.points} bestCombo={gameStats.best} counted={result.counted} isBest={result.isBest} promoted={result.promoted} demo={result.demo} onAgain={startCalib} onProgress={() => router.push(`/p/${profileId}/progress`)} />
+                  <GameResult level={level} hull={gameStats.hull} gates={gameStats.gates} metrics={{ accuracy: result.acc, smoothness: result.smooth, tremor: result.trem, completionTimeS: result.time }} chain={gameStats.chain} acc={result.acc} time={result.time} detail={simple ? undefined : [["Deviation", `${result.dev} mm`], ["Tremor", `${result.trem}/10`], ["Smoothness", String(result.smooth)], ["Haptic", `${result.pulses}×`]]} trainingScore={result.score} points={gameStats.points} bestCombo={gameStats.best} counted={result.counted} isBest={result.isBest} promoted={result.promoted} demo={result.demo} onAgain={startCalib} onProgress={() => router.push(`/p/${profileId}/progress`)} />
                 )}
                 {result && !game && simple && (
                   <>
