@@ -1,4 +1,5 @@
 """Sanity checks on synthetic signals with known answers (not training data)."""
+from __future__ import annotations
 import sys
 from pathlib import Path
 

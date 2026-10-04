@@ -8,6 +8,7 @@
 Each recording is quality-checked (sample rate, dropouts, gravity, stuck axes) and re-recorded on request.
 Use anonymous IDs (p01, p02, …), never names, and get each participant's consent first.
 """
+from __future__ import annotations
 import argparse
 import sys
 import time

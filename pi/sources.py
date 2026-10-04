@@ -1,4 +1,5 @@
 """Sample sources. Each yields (t_s, ax, ay, az, gx, gy, gz) tuples."""
+from __future__ import annotations
 import math
 import time
 

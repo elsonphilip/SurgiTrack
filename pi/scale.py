@@ -5,6 +5,7 @@ The HC-SR04 gives the camera's height above the work surface. With a pinhole cam
 The trace area's centre is assumed to sit at the image centre (adjust `center_px` after mounting; see docs/HARDWARE.md).
 Needs checking on the real rig — the FOV below is the Pi Camera v2's published horizontal FOV.
 """
+from __future__ import annotations
 import math
 from dataclasses import dataclass
 

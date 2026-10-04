@@ -5,6 +5,7 @@ Flow (mirrors the website's Live Session screen):
   idle → begin_calibration() → calib step 0 (wristband on) → 1 (neutral pose) → 2 (hold still 5 s, auto) → 3 (baseline
   locked) → start_run() → run (trace the path; leaving the tolerance band fires the haptic) → done (metrics + raw data)
 """
+from __future__ import annotations
 import math
 import threading
 from collections import deque

@@ -8,6 +8,7 @@
 Browser (Live Session → Settings → Data source = Raspberry Pi) connects to ws://<this machine>:8765.
 Finished sessions are POSTed to the website (--site, default http://localhost:3000). Message formats: docs/PROTOCOL.md.
 """
+from __future__ import annotations
 import argparse
 import asyncio
 import base64

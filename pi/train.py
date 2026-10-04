@@ -11,6 +11,7 @@ Reported on a participant-held-out test set (~20% of people) AND grouped cross-v
 accuracy, precision, recall, F1, false-positive rate, inference time per window.
 Never splits random windows: windows from one person never appear in both train and test.
 """
+from __future__ import annotations
 import argparse
 import sys
 import json

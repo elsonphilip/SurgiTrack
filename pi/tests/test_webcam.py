@@ -1,5 +1,6 @@
 """Laptop-webcam path: real MediaPipe on a synthetic video of a hand moving by a known amount, then the full
 HardwareRig (virtual serial port + replayed video) → Sample. Skipped if MediaPipe / the sample photo aren't available."""
+from __future__ import annotations
 import sys
 import threading
 import time

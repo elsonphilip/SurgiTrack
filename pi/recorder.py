@@ -3,6 +3,7 @@
   python recorder.py --port /dev/ttyACM0 --user u01 --task steady_hold --label steady --seconds 30
   python recorder.py --simulate --out /tmp/test   # fake data; refuses to write into data/raw
 """
+from __future__ import annotations
 import argparse
 import csv
 import json

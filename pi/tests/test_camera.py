@@ -1,4 +1,5 @@
 """MediaPipe fingertip detection on real photos (downloaded once; skipped if offline or MediaPipe isn't installed)."""
+from __future__ import annotations
 import sys
 import urllib.request
 from pathlib import Path

@@ -1,4 +1,5 @@
 """End-to-end: simulated rig → engine → WebSocket → (fake) website, all in-process and sped up."""
+from __future__ import annotations
 import asyncio
 import json
 import sys

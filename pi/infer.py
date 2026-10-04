@@ -1,4 +1,5 @@
 """Run the trained LightGBM tremor model on a live 2 s IMU window."""
+from __future__ import annotations
 import json
 from pathlib import Path
 

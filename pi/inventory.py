@@ -1,4 +1,5 @@
 """What data do we have, and is it enough to train?   python3 inventory.py"""
+from __future__ import annotations
 import json
 import sys
 from collections import defaultdict

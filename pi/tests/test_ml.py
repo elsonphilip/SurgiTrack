@@ -1,5 +1,6 @@
 """Pipeline sanity tests on GENERATED signals. This proves the code runs and splits correctly;
 it is not training data and says nothing about real-world accuracy."""
+from __future__ import annotations
 import json
 import sys
 from pathlib import Path

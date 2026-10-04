@@ -5,6 +5,7 @@
   python camera_check.py --camera 0 --height-cm 14              # overhead Pi camera (HC-SR04 height you pass)
 Prints the fingertip in pixels and in trace-area millimetres.
 """
+from __future__ import annotations
 import argparse
 import time
 

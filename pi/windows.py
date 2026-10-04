@@ -7,6 +7,7 @@ Optional camera/path columns (NaN-filled if absent, LightGBM handles NaN nativel
   camX, camY  fingertip position in mm   → hand velocity, smoothness
   dev_mm      distance from target path  → path deviation, time outside tolerance
 """
+from __future__ import annotations
 import numpy as np
 from scipy.signal import butter, filtfilt, welch
 

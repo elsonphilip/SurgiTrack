@@ -4,6 +4,7 @@ Only REAL device recordings are used (meta "source" == "device"). Synthetic/simu
 Labels → binary target. Edit POSITIVE/NEGATIVE to change what counts as "tremor"; any other label
 (e.g. fatigued, caffeine) is skipped unless you add it to one of the sets.
 """
+from __future__ import annotations
 import json
 from pathlib import Path
 

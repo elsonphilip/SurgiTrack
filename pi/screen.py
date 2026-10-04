@@ -1,4 +1,5 @@
 """Optional LightGBM tremor screening during sessions. Returns None until a model has been trained (train.py)."""
+from __future__ import annotations
 from pathlib import Path
 
 MODEL_DIR = Path(__file__).resolve().parent.parent / "models"

@@ -1,4 +1,5 @@
 """Sanity-check a recording before it goes into the training set."""
+from __future__ import annotations
 import numpy as np
 import pandas as pd
 

@@ -3,6 +3,7 @@
 Input: array of shape (n, 3) accel in g (or any consistent unit) sampled at fs Hz.
 Gravity/posture is removed by high-passing, so features reflect movement, not orientation.
 """
+from __future__ import annotations
 import numpy as np
 from scipy.signal import butter, filtfilt, welch
 

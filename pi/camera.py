@@ -7,6 +7,7 @@ Works with BOTH MediaPipe APIs:
 Optional dependencies, only needed on the Pi:  pip install -r requirements-camera.txt
 Verified on still photos with MediaPipe 1.0.1; NOT yet verified with a live Pi camera.
 """
+from __future__ import annotations
 import time
 import urllib.request
 from dataclasses import dataclass

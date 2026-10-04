@@ -1,4 +1,5 @@
 """Post a finished session to the website (POST /api/sessions)."""
+from __future__ import annotations
 import json
 import urllib.error
 import urllib.request

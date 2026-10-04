@@ -5,6 +5,7 @@
   HardwareRig  — Arduino serial (BMI270 + HC-SR04) + Pi camera/MediaPipe. NOT yet tested on real hardware.
 Both expose  read(target_mm, running) -> Sample  and  buzz().
 """
+from __future__ import annotations
 import math
 import queue
 import threading

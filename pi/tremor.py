@@ -5,6 +5,7 @@
 
 K, ALPHA and LN_REF are PLACEHOLDERS. Fit them on real recordings (see suggest_k) before trusting the numbers.
 """
+from __future__ import annotations
 import numpy as np
 from scipy.signal import butter, sosfiltfilt
 

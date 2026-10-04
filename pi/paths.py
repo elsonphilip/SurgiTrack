@@ -3,6 +3,7 @@
 Coordinates are millimetres on the 120 × 60 mm trace area, origin top-left, +y down — the same frame as the
 Live Session canvas (960 × 480 px at 8 px/mm). Use deviation_mm() to score a fingertip position against a path.
 """
+from __future__ import annotations
 import json
 from pathlib import Path
 

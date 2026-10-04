@@ -1,4 +1,5 @@
 """5-second still calibration: records baseline orientation (mean accel) and noise floor."""
+from __future__ import annotations
 import json
 import sys
 import time
