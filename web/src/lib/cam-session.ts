@@ -16,15 +16,32 @@ type Pt = [number, number, number]; // t seconds, x mm, y mm
 const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
 const median = (a: number[]) => { const s = [...a].sort((x, y) => x - y); return s.length ? s[Math.floor(s.length / 2)] : 0; };
 
+/** One Euro filter: smooths hard when the fingertip is still (kills landmark jitter), follows quickly when it moves. */
+class OneEuro {
+  private x?: number; private dx = 0; private t?: number;
+  constructor(private minCutoff = 1.0, private beta = 0.3, private dCutoff = 1.0) {}
+  private alpha(cutoff: number, dt: number) { const tau = 1 / (2 * Math.PI * cutoff); return 1 / (1 + tau / dt); }
+  filter(v: number, t: number) {
+    if (this.x === undefined || this.t === undefined) { this.x = v; this.t = t; return v; }
+    const dt = Math.max(1e-3, t - this.t);
+    const d = (v - this.x) / dt;
+    this.dx += this.alpha(this.dCutoff, dt) * (d - this.dx);
+    this.x += this.alpha(this.minCutoff + this.beta * Math.abs(this.dx), dt) * (v - this.x);
+    this.t = t;
+    return this.x;
+  }
+}
+
 export class HandRuler {
   mmPerPx = 0.5;
   private spans: number[] = [];
+  private locked = false;
   constructor(public mirror = true) {}
 
   /** Normalised landmarks + video size → fingertip on the 120 × 60 mm trace area (image centre = centre of the area). */
   map(lm: Lm[], w: number, h: number): [number, number] {
     const span = Math.hypot((lm[0].x - lm[9].x) * w, (lm[0].y - lm[9].y) * h);
-    if (span > 20) {
+    if (span > 20 && !this.locked) { // once locked the scale stays fixed, otherwise hand-size noise would stretch the cursor around
       this.mmPerPx += 0.05 * (HAND_REF_MM / span - this.mmPerPx);
       this.spans.push(span);
       if (this.spans.length > 60) this.spans.shift();
@@ -37,6 +54,7 @@ export class HandRuler {
   lock() {
     const m = median(this.spans);
     if (m > 20) this.mmPerPx = HAND_REF_MM / m;
+    this.locked = true;
     return this.mmPerPx;
   }
   get samples() { return this.spans.length; }
@@ -118,21 +136,40 @@ export class CamRun {
   private pts: number[][] = [];
   private tolMm = 3;
   private px = 8;
-  private t0 = 0;
   private n = 0; private inN = 0; private devSum = 0; private pulses = 0; private wasOut = false;
-  track: Pt[] = [];
+  private fx = new OneEuro(); private fy = new OneEuro();
+  private offset: [number, number] = [0, 0];
+  private raw: [number, number] = [0, 0];
+  private placed: [number, number] = [0, 0];
+  track: Pt[] = [];   // raw fingertip (the tremor is measured on this)
+  trackS: Pt[] = [];  // smoothed + placed fingertip (smoothness is measured on this)
 
   beginStill() { this.still = []; }
   pushStill(t: number, mm: [number, number]) { this.still.push([t, mm[0], mm[1]]); }
   endStill() { this.sigma = Math.max(bandRmsMm(this.still), MIN_SIGMA_MM); return this.sigma; }
 
-  beginRun(ptsPx: number[][], tolMm: number, px: number, t0: number) {
-    this.pts = ptsPx; this.tolMm = tolMm; this.px = px; this.t0 = t0;
-    this.n = this.inN = this.pulses = 0; this.devSum = 0; this.wasOut = false; this.track = [];
+  /** Feed every camera frame: smooths the fingertip and returns where it is on the trace area (mm). */
+  observe(t: number, mm: [number, number]): [number, number] {
+    this.raw = mm;
+    const sx = this.fx.filter(mm[0], t), sy = this.fy.filter(mm[1], t);
+    this.placed = [sx + this.offset[0], sy + this.offset[1]];
+    return this.placed;
   }
 
-  /** One fingertip sample (t in seconds). Returns the canvas position, distance from the path and whether it is outside the band. */
-  push(t: number, mm: [number, number]) {
+  /** The run starts with the fingertip where the path starts, so you don't have to line your hand up with a fixed spot in the camera. */
+  anchorTo(targetMm: [number, number]) {
+    this.offset = [targetMm[0] - (this.placed[0] - this.offset[0]), targetMm[1] - (this.placed[1] - this.offset[1])];
+    this.placed = [targetMm[0], targetMm[1]];
+  }
+
+  beginRun(ptsPx: number[][], tolMm: number, px: number) {
+    this.pts = ptsPx; this.tolMm = tolMm; this.px = px;
+    this.n = this.inN = this.pulses = 0; this.devSum = 0; this.wasOut = false; this.track = []; this.trackS = [];
+  }
+
+  /** Record the sample from the last observe() (t in seconds). Returns the canvas position, distance from the path and whether it is outside the band. */
+  push(t: number) {
+    const mm = this.placed;
     const x = mm[0] * this.px, y = mm[1] * this.px;
     let md = 1e18;
     for (const p of this.pts) { const d = (p[0] - x) ** 2 + (p[1] - y) ** 2; if (d < md) md = d; }
@@ -140,24 +177,25 @@ export class CamRun {
     this.n++; if (!out) this.inN++; this.devSum += dev;
     if (out && !this.wasOut) this.pulses++;
     this.wasOut = out;
-    this.track.push([t, mm[0], mm[1]]);
+    this.track.push([t, this.raw[0], this.raw[1]]);
+    this.trackS.push([t, mm[0], mm[1]]);
     return { x, y, dev, out };
   }
 
   get samples() { return this.n; }
+
+  /** Tremor index over roughly the last three seconds, for the live display. */
+  liveTremor() { return tremorIndex(bandRmsMm(this.track.slice(-90)), this.sigma); }
 
   /** Numbers for the live tiles while the run is going. */
   liveStats() {
     return {
       acc: this.n ? (100 * this.inN) / this.n : null,
       tremor: this.liveTremor(),
-      smooth: smoothnessScore(this.track.slice(-90)),
+      smooth: smoothnessScore(this.trackS.slice(-90)),
       pulses: this.pulses,
     };
   }
-
-  /** Tremor index over roughly the last three seconds, for the live display. */
-  liveTremor() { return tremorIndex(bandRmsMm(this.track.slice(-90)), this.sigma); }
 
   metrics(elapsedS: number): CamMetrics | null {
     if (this.n < 10) return null;
@@ -165,7 +203,7 @@ export class CamRun {
       accuracy: Math.round(clamp((100 * this.inN) / this.n, 0, 100) * 10) / 10,
       avgDeviationMm: Math.round((this.devSum / this.n) * 100) / 100,
       tremor: Math.round(tremorIndex(bandRmsMm(this.track), this.sigma) * 10) / 10,
-      smoothness: Math.round(smoothnessScore(this.track)),
+      smoothness: Math.round(smoothnessScore(this.trackS)),
       completionTimeS: Math.round(elapsedS * 10) / 10,
       hapticPulses: this.pulses,
     };

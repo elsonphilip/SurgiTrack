@@ -39,14 +39,38 @@ ok("hand moving to your right moves the cursor right", right[0] > 60 && Math.abs
 // 4. a run: tracing the path exactly scores 100% with ~0 deviation; being 5 mm off scores 0%
 const pts = Array.from({ length: 100 }, (_, i) => [80 + i * 8, 240]);
 const run = new CamRun();
-run.beginRun(pts, 3, 8, 0);
-for (let i = 0; i < 100; i++) run.push(i / 30, [10 + i, 30]);
+run.beginRun(pts, 3, 8);
+for (let i = 0; i < 100; i++) { run.observe(i / 30, [10 + i, 30]); run.push(i / 30); }
 const m = run.metrics(3.3)!;
 ok("on-path run: accuracy 100%, deviation ≈ 0, no phantom tremor", m.accuracy === 100 && m.avgDeviationMm < 0.5 && m.tremor < 1, JSON.stringify(m));
-const off = new CamRun(); off.beginRun(pts, 3, 8, 0);
-for (let i = 0; i < 100; i++) off.push(i / 30, [10 + i, 36]);
+const off = new CamRun(); off.beginRun(pts, 3, 8);
+for (let i = 0; i < 100; i++) { off.observe(i / 30, [10 + i, 36]); off.push(i / 30); }
 ok("6 mm off the path: accuracy 0%", off.metrics(3.3)!.accuracy === 0);
 ok("too few samples → no metrics", new CamRun().metrics(1) === null);
+
+// 5. anchoring: wherever the fingertip is when the run starts, it begins on the path's start; relative movement is preserved
+const anc = new CamRun(); anc.beginRun(pts, 3, 8);
+anc.observe(0, [97, 12]); anc.anchorTo([10, 30]);
+let moved: [number, number] = [0, 0];
+for (let i = 1; i <= 8; i++) moved = anc.observe(i * 0.03, [97 + 5, 12 - 3]); // settle on the new position
+ok("run starts on the path start; movement is relative", Math.abs(moved[0] - 15) < 1.5 && Math.abs(moved[1] - 27) < 1.5, `[${moved.map((v) => v.toFixed(1))}] (expect ≈ [15, 27])`);
+
+// 6. smoothing: resting landmark jitter is damped but a real stroke is followed
+const jit = new CamRun(); let seed2 = 3; const r2 = () => { seed2 = (seed2 * 1664525 + 1013904223) >>> 0; return seed2 / 4294967296 - 0.5; };
+const still = Array.from({ length: 60 }, (_, i) => jit.observe(i / 30, [50 + 1.2 * r2(), 30 + 1.2 * r2()]));
+const spread = Math.max(...still.slice(20).map((p) => p[0])) - Math.min(...still.slice(20).map((p) => p[0]));
+ok("resting jitter is damped", spread < 0.8, `spread ${spread.toFixed(2)} mm from ±0.6 raw`);
+const stroke = new CamRun(); let last: [number, number] = [0, 0];
+for (let i = 0; i < 30; i++) last = stroke.observe(i / 30, [i * 2, 30]); // 60 mm/s
+ok("a real stroke is followed closely", Math.abs(last[0] - 58) < 6, `lag ${(58 - last[0]).toFixed(1)} mm`);
+
+// 7. the scale freezes once locked
+const fr = new HandRuler();
+for (let i = 0; i < 40; i++) fr.map(hand(0.5, 0.5), 640, 480);
+fr.lock(); const before = fr.mmPerPx;
+const big = (): Lm[] => { const lm = hand(0.5, 0.5); lm[9] = { x: 0.5, y: 0.7 - 300 / 480 }; return lm; };
+for (let i = 0; i < 40; i++) fr.map(big(), 640, 480);
+ok("scale is frozen after Lock", fr.mmPerPx === before);
 
 if (failed) { console.error(`\n${failed} check(s) failed`); process.exit(1); }
 console.log("\nall webcam maths checks passed");

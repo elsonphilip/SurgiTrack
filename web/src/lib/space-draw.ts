@@ -135,7 +135,7 @@ export function drawSpace(g: G, r: Scene, now: number, d: Dims) {
   // trace as an engine trail
   const heat = r.settings.traceStyle === "heat";
   g.save(); g.shadowColor = "#5aa4d6"; g.shadowBlur = 10; g.lineWidth = 2.6;
-  for (let i = 1; i < T.length; i++) { g.strokeStyle = heat && T[i][2] ? "#E3A857" : "rgba(166,202,200,.85)"; g.beginPath(); g.moveTo(T[i - 1][0], T[i - 1][1]); g.lineTo(T[i][0], T[i][1]); g.stroke(); }
+  for (let i = 1; i < T.length; i++) { if (Math.hypot(T[i][0] - T[i - 1][0], T[i][1] - T[i - 1][1]) > 90) continue; g.strokeStyle = heat && T[i][2] ? "#E3A857" : "rgba(166,202,200,.85)"; g.beginPath(); g.moveTo(T[i - 1][0], T[i - 1][1]); g.lineTo(T[i][0], T[i][1]); g.stroke(); }
   g.restore();
 
   // ship

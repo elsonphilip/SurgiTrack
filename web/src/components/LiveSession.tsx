@@ -161,6 +161,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
   const [piCamera, setPiCamera] = useState(false);
   const [task, setTaskS] = useState<"path" | "hold">("path");
   const [hydrated, setHydrated] = useState(false); // saved settings have been read; only then may they be written back
+  const [armLeft, setArmLeft] = useState(0); // webcam: "get ready" countdown before the run starts
   const [bandOnly, setBandOnly] = useState(false); // the band reports only its own tremor level (standalone sketch)
   const [video, setVideo] = useState<string | null>(null);
   const [handLost, setHandLost] = useState(false);
@@ -171,7 +172,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
   const R = useRef({
     phase: (autoStart ? "calib" : "idle") as Phase, level, calStep: 0, trace: [] as [number, number, boolean][], pts: [] as number[][], path: defaultPath(Math.min(Math.max(startLevel, 1), 5)),
     acc: { n: 0, in: 0, dev: 0, tr: 0, pulses: 0 }, wasOut: false, hapUntil: 0, t0: 0, m0: 0, lastUi: 0,
-    g: newGame(0), game: false, cam: new CamRun(), task: "path" as "path" | "hold", limit: 3, hpm: 0, hpv: 1e-6, decor: [] as Decor[], hapKind: null as string | null, hx: [] as number[], hy: [] as number[], raw: [] as RawSample[], settings: DEFAULTS, mode: "sim" as "sim" | "pi" | "cam", ws: null as WebSocket | null, cursor: null as [number, number] | null, ct: 0 as unknown as ReturnType<typeof setInterval>,
+    g: newGame(0), game: false, cam: new CamRun(), camArm: 0, camStarted: false, task: "path" as "path" | "hold", limit: 3, hpm: 0, hpv: 1e-6, decor: [] as Decor[], hapKind: null as string | null, hx: [] as number[], hy: [] as number[], raw: [] as RawSample[], settings: DEFAULTS, mode: "sim" as "sim" | "pi" | "cam", ws: null as WebSocket | null, cursor: null as [number, number] | null, ct: 0 as unknown as ReturnType<typeof setInterval>,
   });
 
   const setPhase = (p: Phase) => {
@@ -193,14 +194,25 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
     if (r.mode !== "cam") return;
     setHandLost(f.lm === null);
     if (!f.lm) { r.cursor = null; return; }
-    const mm = r.cam.ruler.map(f.lm, f.w, f.h);
-    // Scoring uses the true position; the drawn ship/cursor is kept on the canvas so you can always see where you are.
+    const raw = r.cam.ruler.map(f.lm, f.w, f.h);
+    if (r.phase === "calib" && r.calStep === 2) r.cam.pushStill(f.t, raw);
+    const mm = r.cam.observe(f.t, raw); // smoothed fingertip, anchored to the path start once the run begins
+    // The drawn cursor is kept on the canvas so you can always see where you are; scoring uses the true position.
     r.cursor = [clamp(mm[0] * PX, 8, W - 8), clamp(mm[1] * PX, 8, H - 8)];
-    if (r.phase === "calib" && r.calStep === 2) r.cam.pushStill(f.t, mm);
     if (r.phase !== "run") return;
-    const now = performance.now(), el = (now - r.t0) / 1000, tt = clamp(el / r.settings.sessionLength, 0, 1);
-    const o = r.cam.push(f.t, mm);
-    if (r.trace.length < 5000) r.trace.push([clamp(o.x, 8, W - 8), clamp(o.y, 8, H - 8), o.out]);
+    const now = performance.now();
+    if (!r.camStarted) { // "get ready": count down, then start the run with the fingertip on the path's start dot
+      const left = r.camArm - now;
+      if (left > 0) { setArmLeft(Math.ceil(left / 1000)); return; }
+      r.cam.anchorTo([r.pts[0][0] / PX, r.pts[0][1] / PX]);
+      r.cam.beginRun(r.pts, LEVELS[r.level - 1].toleranceMm, PX);
+      r.camStarted = true; r.t0 = now; r.g = newGame(now); r.trace = [];
+      setArmLeft(0);
+      return;
+    }
+    const el = (now - r.t0) / 1000, tt = clamp(el / r.settings.sessionLength, 0, 1);
+    const o = r.cam.push(f.t);
+    if (o.x >= 0 && o.x <= W && o.y >= 0 && o.y <= H && r.trace.length < 5000) r.trace.push([o.x, o.y, o.out]);
     gameStep(r.g, !o.out, now, tt);
     if (o.out) { r.hapUntil = now + 220; r.hapKind = "buzz"; } // visual cue only: there is no wristband on this source
     if (now - r.lastUi > 120) {
@@ -210,7 +222,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
       setHapticOn(now < r.hapUntil);
     }
   }, []);
-  const { videoRef: camVideoRef, overlayRef: camOverlayRef, status: camStatus, message: camMessage, handVisible: camHand, start: camStart, stop: camStop } = useWebcamTracker(onCamFrame);
+  const { videoRef: camVideoRef, overlayRef: camOverlayRef, status: camStatus, message: camMessage, handVisible: camHand, fps: camFps, start: camStart, stop: camStop } = useWebcamTracker(onCamFrame);
   const finishCam = async () => {
     const r = R.current;
     if (r.phase !== "run") return;
@@ -288,7 +300,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
   const startRun = () => {
     const r = R.current;
     r.trace = []; r.raw = []; r.acc = { n: 0, in: 0, dev: 0, tr: 0, pulses: 0 }; r.wasOut = false; r.t0 = performance.now(); r.g = newGame(r.t0);
-    if (r.mode === "cam") r.cam.beginRun(r.pts, LEVELS[r.level - 1].toleranceMm, PX, r.t0);
+    if (r.mode === "cam") { r.camStarted = false; r.camArm = r.t0 + 2500; setArmLeft(3); } // 2.5 s to get your hand ready; the clock starts after
     setResult(null); setError(null);
     setPhase("run");
   };
@@ -352,6 +364,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
     if (R.current.mode === "pi") { piSend(R.current, { cmd: "stop" }); return; }
     clearInterval(R.current.ct);
     R.current.trace = [];
+    setArmLeft(0);
     setPhase("idle"); setLive(EMPTY);
   };
   const setLevel = (l: number) => {
@@ -507,6 +520,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
       const T = r.trace, heat = r.settings.traceStyle === "heat";
       g.lineWidth = 2.6;
       for (let i = 1; i < T.length; i++) {
+        if (Math.hypot(T[i][0] - T[i - 1][0], T[i][1] - T[i - 1][1]) > 90) continue; // a jump (hand lost / re-found) is not a stroke
         g.strokeStyle = heat && T[i][2] ? "#E3A857" : "#A6CAC8";
         g.beginPath(); g.moveTo(T[i - 1][0], T[i - 1][1]); g.lineTo(T[i][0], T[i][1]); g.stroke();
       }
@@ -527,7 +541,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
         // frames arrive over the WebSocket; nothing to simulate
       } else if (r.mode === "cam") {
         // fingertip frames arrive from the webcam hook; here we only watch the clock
-        if (r.phase === "run" && (now - r.t0) / 1000 >= r.settings.sessionLength) finishCamRef.current();
+        if (r.phase === "run" && r.camStarted && (now - r.t0) / 1000 >= r.settings.sessionLength) finishCamRef.current();
       } else if (r.phase === "run") {
         const len = r.settings.sessionLength;
         const el = (now - r.t0) / 1000, tt = Math.min(1, el / len);
@@ -678,6 +692,11 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
           {camMode && camMessage && phase !== "calib" && (
             <div role="status" style={{ padding: "12px 16px", borderRadius: 16, background: "var(--pill)", fontSize: 13.5, lineHeight: 1.5, color: ["denied", "nodevice", "error"].includes(camStatus) ? "var(--warn)" : "var(--cream)" }}>{camMessage}</div>
           )}
+          {camMode && camStatus === "ready" && camFps > 0 && camFps < 12 && (
+            <div role="status" style={{ padding: "12px 16px", borderRadius: 16, background: "var(--pill)", fontSize: 13.5, lineHeight: 1.5, color: "var(--warn)" }}>
+              Hand tracking is running slowly ({camFps} frames a second), so your line will look jagged. Close other tabs and apps, plug in your laptop, and avoid a very bright window behind you.
+            </div>
+          )}
           {camMode && camStatus === "off" && phase === "idle" && (
             <div role="status" style={{ padding: "12px 16px", borderRadius: 16, background: "var(--pill)", fontSize: 13.5, lineHeight: 1.5 }}>
               <b>Webcam mode.</b> Press Start and your browser will ask to use the camera. Hand tracking runs in your browser and the video never leaves this computer. Your fingertip is estimated from your hand size, so keep your whole hand in view.
@@ -688,12 +707,21 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
           )}
           <div style={{ position: "relative", borderRadius: 22, overflow: "hidden", background: "var(--canvas)" }}>
             <canvas ref={cv} style={{ display: "block", width: "100%", aspectRatio: "2/1" }} />
+            {camMode && phase === "run" && armLeft > 0 && (
+              <div role="status" style={{ position: "absolute", inset: 0, zIndex: 4, display: "grid", placeItems: "center", background: "rgba(24,24,22,.55)", textAlign: "center" }}>
+                <div>
+                  <div className="head" style={{ fontSize: 120, lineHeight: 1 }}>{armLeft}</div>
+                  <div style={{ fontSize: 15, marginTop: 6 }}>Get your fingertip ready. The ship starts at the green dot and follows your finger.</div>
+                </div>
+              </div>
+            )}
             {camMode && (
               <div style={{ position: "absolute", right: 12, bottom: 12, zIndex: 5, width: 168, aspectRatio: "4/3", borderRadius: 14, overflow: "hidden", background: "#111", boxShadow: "0 6px 18px rgba(0,0,0,.45)", display: camStatus === "ready" || camStatus === "loading" ? "block" : "none" }}>
                 <div style={{ position: "absolute", inset: 0, transform: "scaleX(-1)" }}>
                   <video ref={camVideoRef} muted playsInline style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                   <canvas ref={camOverlayRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />
                 </div>
+                {camStatus === "ready" && <span className="mono" style={{ position: "absolute", left: 6, bottom: 5, fontSize: 10.5, padding: "1px 6px", borderRadius: 999, background: "rgba(24,24,22,.8)", color: camFps >= 12 ? "var(--cream)" : "var(--warn)" }}>{camFps} fps</span>}
                 <button onClick={() => camStop()} title="Turn the camera off" aria-label="Turn the camera off" style={{ position: "absolute", top: 6, right: 6, width: 24, height: 24, borderRadius: "50%", border: 0, cursor: "pointer", background: "rgba(24,24,22,.8)", color: "var(--cream)", fontSize: 14, lineHeight: 1 }}>×</button>
               </div>
             )}

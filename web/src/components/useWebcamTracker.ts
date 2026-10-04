@@ -17,9 +17,10 @@ export function useWebcamTracker(onFrame: (f: CamFrame) => void) {
   const [status, setStatus] = useState<CamStatus>("off");
   const [message, setMessage] = useState("");
   const [handVisible, setHandVisible] = useState(false);
+  const [fps, setFps] = useState(0); // how many camera frames a second are being tracked
   const cb = useRef(onFrame);
   useEffect(() => { cb.current = onFrame; }, [onFrame]);
-  const live = useRef({ stream: null as MediaStream | null, raf: 0, run: 0, last: -1, vis: false, conns: [] as Connection[] });
+  const live = useRef({ stream: null as MediaStream | null, raf: 0, run: 0, last: -1, vis: false, conns: [] as Connection[], n: 0, t0: 0 });
 
   const stop = useCallback(() => {
     const L = live.current;
@@ -29,7 +30,7 @@ export function useWebcamTracker(onFrame: (f: CamFrame) => void) {
     L.stream = null;
     const v = videoRef.current;
     if (v) { v.pause(); v.srcObject = null; }
-    L.vis = false; setHandVisible(false);
+    L.vis = false; setHandVisible(false); setFps(0); L.n = 0;
     setStatus("off"); setMessage("");
   }, []);
 
@@ -65,6 +66,9 @@ export function useWebcamTracker(onFrame: (f: CamFrame) => void) {
         const vis = lm !== null;
         if (vis !== L.vis) { L.vis = vis; setHandVisible(vis); }
         draw(overlayRef.current, lm, L.conns);
+        L.n++;
+        const nowMs = performance.now();
+        if (nowMs - L.t0 >= 1000) { setFps(Math.round((L.n * 1000) / (nowMs - L.t0))); L.n = 0; L.t0 = nowMs; }
         cb.current({ t: performance.now() / 1000, lm, w: v.videoWidth, h: v.videoHeight });
       };
       L.raf = requestAnimationFrame(tick);
@@ -85,7 +89,7 @@ export function useWebcamTracker(onFrame: (f: CamFrame) => void) {
   }, []);
 
   useEffect(() => () => stop(), [stop]);
-  return { videoRef, overlayRef, status, message, handVisible, start, stop };
+  return { videoRef, overlayRef, status, message, handVisible, fps, start, stop };
 }
 
 function draw(c: HTMLCanvasElement | null, lm: Lm[] | null, conns: Connection[]) {
