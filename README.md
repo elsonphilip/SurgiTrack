@@ -20,6 +20,18 @@ feedback back to the user (DRV2605L). A camera + MediaPipe Hands tracks path; th
 cd pi && pip install -r requirements.txt && pytest
 python recorder.py --port /dev/ttyACM0 --user u01 --task steady_hold --label steady --seconds 30
 ```
+## Two separate switches: Mode and Display
+
+- **Mode: Standard | Game** (top bar). Game turns practice into challenges with points, hit combos, stars, XP, ranks
+  (Student → Chief) and badges. The challenges are Precision Rush, Steady Hand, Maze, Trace, Survival (the zone shrinks)
+  and Zen (jerks break your chain).
+- **Display: Simple | Detailed.** Simple shows score, accuracy, timer and plain feedback. Detailed adds deviation,
+  tremor, smoothness, graphs and sensor data.
+
+They combine freely (Game + Simple, Game + Detailed, and so on). Game rules only change points, combos and which path you
+get. Accuracy, tremor, smoothness and the score are measured the same way in every mode, so every run still produces the
+same data for the model. XP, ranks and badges are derived from saved sessions (`web/src/lib/game.ts`).
+
 ## Tremor model (`tracker/`)
 ```
 BMI270/camera → raw time series → high-pass filter + 2 s windows → features → LightGBM → tremor probability

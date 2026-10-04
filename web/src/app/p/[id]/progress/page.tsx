@@ -2,7 +2,8 @@ import { notFound } from "next/navigation";
 import { getProfile, listSessions } from "@/lib/store";
 import { LEVELS, MAX_LEVEL, UNLOCK_COUNT, UNLOCK_SCORE, consistency } from "@/lib/scoring";
 import { coachingTip, gradeWord } from "@/lib/coach";
-import { getView } from "@/lib/view-server";
+import { getGame, getView } from "@/lib/view-server";
+import { badgesFor, rankFor, totalXp } from "@/lib/game";
 import { PageHeader } from "@/components/PageHeader";
 import { BleedLines, CardHead, DotMatrix, LEGEND_DOT, Stat, fmtDate, svgLine } from "@/components/ui";
 
@@ -17,11 +18,31 @@ export default async function Progress({ params }: PageProps<"/p/[id]/progress">
   if (!profile) notFound();
   const ss = await listSessions(id, { counted: true });
   const simple = (await getView()) === "simple";
+  const game = await getGame();
+  const badges = badgesFor(ss, profile.level);
+  const xp = totalXp(ss), rank = rankFor(xp);
+  const gameCard = game && (
+    <div className="card" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 8 }}>
+        <span className="card-title">Badges · {badges.filter((b) => b.earned).length}/{badges.length}</span>
+        <span className="mono muted" style={{ fontSize: 13 }}>{rank.name} · {xp} XP{rank.next ? ` · ${rank.span - rank.into} to ${rank.next}` : ""}</span>
+      </div>
+      <div className="badge-grid">
+        {badges.map((b) => (
+          <div key={b.id} className={`badge${b.earned ? "" : " locked"}`} title={b.desc}>
+            <span className="badge-ico">{b.earned ? "★" : "?"}</span>
+            <div><div style={{ fontWeight: 700, fontSize: 14 }}>{b.name}</div><div style={{ fontSize: 12, color: "rgba(166,202,200,.7)" }}>{b.desc}</div></div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 
   if (ss.length === 0) {
     return (
       <>
         <PageHeader title={simple ? "My Progress" : "Progress"} level={profile.level} simple={simple} />
+      {gameCard}
         <div className="empty">{simple ? "No practice sessions yet. Start one from the Practice tab and your progress will show up here." : "No sessions yet. Run one from Live Session and your progress will show up here."}</div>
       </>
     );
@@ -51,6 +72,7 @@ export default async function Progress({ params }: PageProps<"/p/[id]/progress">
     return (
       <>
         <PageHeader title="My Progress" level={profile.level} simple />
+      {gameCard}
         <div className="row">
           <div className="card" style={{ flex: "1 1 240px" }}><Stat value={profile.bestScore} label="Best score" /></div>
           <div className="card" style={{ flex: "1 1 240px" }}><Stat value={gradeWord(last.score)} label={`Latest session: ${last.score}`} /></div>
@@ -106,6 +128,7 @@ export default async function Progress({ params }: PageProps<"/p/[id]/progress">
   return (
     <>
       <PageHeader title="Progress" level={profile.level} />
+      {gameCard}
       <div className="row">
         <div className="card" style={{ flex: "1 1 300px", minWidth: 0, paddingBottom: 0, display: "flex", flexDirection: "column", gap: 18, overflow: "hidden" }}>
           <CardHead title="Precision" />

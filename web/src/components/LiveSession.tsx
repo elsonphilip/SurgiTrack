@@ -3,12 +3,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LEVELS } from "@/lib/scoring";
+import { CHALLENGES, COMBO_MAX, COMBO_STEP_S, HIT_S, challengeById, type Challenge, type ChallengeId } from "@/lib/game";
 import { coachingTip, gradeWord, smoothWord, tremorWord } from "@/lib/coach";
 import { defaultPath, getPath, pathsForLevel, samplePath, type PathDef } from "@/lib/paths";
 import type { RawSample } from "@/lib/types";
 import { saveSimulatedSession } from "@/app/actions";
 import { useLive } from "./Shell";
 import { BleedLines, CardHead, Stat } from "./ui";
+import { GameResult } from "./GameResult";
 
 /*
  * Live Session screen. The sensor feed here is SIMULATED (ported from the design prototype):
@@ -19,6 +21,30 @@ import { BleedLines, CardHead, Stat } from "./ui";
 const W = 960, H = 480, PX = 8; // canvas logical size; 8 px = 1 mm
 const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
 const rnd = () => Math.random() - 0.5;
+/** Game mode: combo multiplier (+1 per COMBO_STEP_S inside the band, max x5) and run points. Cosmetic only, never saved. */
+interface GameState { t: number; streak: number; points: number; combo: number; best: number; flash: number; hitAcc: number; chain: number; bestChain: number; speed: number; broke: number }
+const newGame = (now: number): GameState => ({ t: now, streak: 0, points: 0, combo: 1, best: 1, flash: 0, hitAcc: 0, chain: 0, bestChain: 0, speed: 0, broke: 0 });
+/** `inBand` = inside this challenge's game band; `speed` = fingertip speed in mm/s (Zen punishes sudden changes). */
+function gameStep(g: GameState, inBand: boolean, now: number, c: Challenge, speed = 0) {
+  const dt = clamp((now - g.t) / 1000, 0, 0.2);
+  g.t = now;
+  const jerk = c.calm && Math.abs(speed - g.speed) / Math.max(dt, 0.016) > 400; // mm/s per s
+  g.speed = speed;
+  if (!inBand || jerk) {
+    if (g.chain > 0) g.broke = now;
+    g.streak = 0; g.combo = 1; g.chain = 0; g.hitAcc = 0;
+    return;
+  }
+  g.streak += dt;
+  g.hitAcc += dt;
+  while (g.hitAcc >= HIT_S) { g.hitAcc -= HIT_S; g.chain++; }
+  g.bestChain = Math.max(g.bestChain, g.chain);
+  const k = Math.min(COMBO_MAX, 1 + Math.floor(g.streak / COMBO_STEP_S));
+  if (k > g.combo) g.flash = now;
+  g.combo = k;
+  g.points += dt * 10 * k;
+  g.best = Math.max(g.best, k);
+}
 const pad = (s: string | number, n: number) => String(s).padStart(n, " ");
 
 type Phase = "idle" | "calib" | "run" | "done";
@@ -30,8 +56,8 @@ interface Result {
   screening?: { tremorProbability: number }; demo?: boolean;
 }
 export interface LastSession { acc: number; dev: number; trem: number; smooth: number }
-interface Settings { sessionLength: number; traceStyle: "heat" | "mono"; showTolerance: boolean; showCamera: boolean; pathId: string; source: "sim" | "pi"; piUrl: string }
-const DEFAULTS: Settings = { sessionLength: 12, traceStyle: "heat", showTolerance: true, showCamera: true, pathId: "", source: "sim", piUrl: "ws://localhost:8765" };
+interface Settings { sessionLength: number; traceStyle: "heat" | "mono"; showTolerance: boolean; showCamera: boolean; pathId: string; source: "sim" | "pi"; piUrl: string; challenge: ChallengeId }
+const DEFAULTS: Settings = { sessionLength: 12, traceStyle: "heat", showTolerance: true, showCamera: true, pathId: "", source: "sim", piUrl: "ws://localhost:8765", challenge: "rush" };
 
 /** "" = the level's original design path, "shuffle" = random path from the level each run, else a path id. */
 function resolvePath(level: number, pathId: string, avoidId?: string): PathDef {
@@ -43,8 +69,16 @@ function resolvePath(level: number, pathId: string, avoidId?: string): PathDef {
   const p = pathId ? getPath(pathId) : undefined;
   return p && p.level === level ? p : defaultPath(level);
 }
-function cachePath(r: { settings: Settings; path: PathDef; pts: number[][] }, level: number) {
-  r.path = resolvePath(level, r.settings.pathId, r.path.id);
+/** Game challenges can override the path choice (Maze = shuffle, Trace = hardest for the level). */
+function effectivePathId(r: { settings: Settings; game: boolean }, level: number): string {
+  if (!r.game) return r.settings.pathId;
+  const c = challengeById(r.settings.challenge);
+  if (c.path === "shuffle") return "shuffle";
+  if (c.path === "hardest") { const l = pathsForLevel(level); return l[l.length - 1]?.id ?? ""; }
+  return r.settings.pathId;
+}
+function cachePath(r: { settings: Settings; game: boolean; path: PathDef; pts: number[][] }, level: number) {
+  r.path = resolvePath(level, effectivePathId(r, level), r.path.id);
   r.pts = samplePath(r.path, 320);
 }
 
@@ -91,7 +125,7 @@ interface Props {
 
 export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: Props) {
   const router = useRouter();
-  const { setHaptic, setDist, startSignal, view } = useLive();
+  const { setHaptic, setDist, startSignal, view, game } = useLive();
   const simple = view === "simple";
   const [settings, setSettings] = useState<Settings>(DEFAULTS);
   const [phase, setPhaseS] = useState<Phase>(autoStart ? "calib" : "idle");
@@ -113,16 +147,27 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
   const [piCamera, setPiCamera] = useState(false);
   const [video, setVideo] = useState<string | null>(null);
   const [handLost, setHandLost] = useState(false);
+  const [gameStats, setGameStats] = useState({ points: 0, best: 1, chain: 0 });
   const [activePath, setActivePath] = useState(defaultPath(Math.min(Math.max(startLevel, 1), 5)).id);
 
   const cv = useRef<HTMLCanvasElement>(null);
   const R = useRef({
     phase: (autoStart ? "calib" : "idle") as Phase, level, calStep: 0, trace: [] as [number, number, boolean][], pts: [] as number[][], path: defaultPath(Math.min(Math.max(startLevel, 1), 5)),
     acc: { n: 0, in: 0, dev: 0, tr: 0, pulses: 0 }, wasOut: false, hapUntil: 0, t0: 0, m0: 0, lastUi: 0,
-    hx: [] as number[], hy: [] as number[], raw: [] as RawSample[], settings: DEFAULTS, mode: "sim" as "sim" | "pi", ws: null as WebSocket | null, cursor: null as [number, number] | null, ct: 0 as unknown as ReturnType<typeof setInterval>,
+    g: newGame(0), game: false, challenge: "rush" as ChallengeId, bandNow: 1, hx: [] as number[], hy: [] as number[], raw: [] as RawSample[], settings: DEFAULTS, mode: "sim" as "sim" | "pi", ws: null as WebSocket | null, cursor: null as [number, number] | null, ct: 0 as unknown as ReturnType<typeof setInterval>,
   });
 
-  const setPhase = (p: Phase) => { R.current.phase = p; setPhaseS(p); };
+  const setPhase = (p: Phase) => {
+    R.current.phase = p; setPhaseS(p);
+    if (p === "done") setGameStats({ points: Math.round(R.current.g.points), best: R.current.g.best, chain: R.current.g.bestChain });
+  };
+  useEffect(() => {
+    const r = R.current;
+    r.game = game; r.settings = { ...r.settings, challenge: settings.challenge };
+    if (r.phase === "run") return;
+    cachePath(r, r.level); r.trace = []; setActivePath(r.path.id);
+    if (r.mode === "pi") piSend(r, { cmd: "set", userId: profileId, level: r.level, pathId: r.path.id, sessionLength: r.settings.sessionLength });
+  }, [game, settings.challenge, profileId]);
 
   useEffect(() => {
     try {
@@ -153,6 +198,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
     const metrics = { accuracy, avgDeviationMm: dev, tremor: trem, smoothness: smooth, completionTimeS: time, hapticPulses: A.pulses };
     r.phase = "done";
     setPhaseS("done");
+    setGameStats({ points: Math.round(r.g.points), best: r.g.best, chain: r.g.bestChain });
     setHapticOn(false);
     setHaptic(false);
     setSaving(true);
@@ -171,7 +217,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
 
   const startRun = () => {
     const r = R.current;
-    r.trace = []; r.raw = []; r.acc = { n: 0, in: 0, dev: 0, tr: 0, pulses: 0 }; r.wasOut = false; r.t0 = performance.now();
+    r.trace = []; r.raw = []; r.acc = { n: 0, in: 0, dev: 0, tr: 0, pulses: 0 }; r.wasOut = false; r.t0 = performance.now(); r.g = newGame(r.t0); r.bandNow = 1;
     setResult(null); setError(null);
     setPhase("run");
   };
@@ -181,13 +227,13 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
     R.current.calStep = 0;
     if (R.current.mode === "pi") {
       const r = R.current;
-      if (r.settings.pathId === "shuffle") { cachePath(r, r.level); setActivePath(r.path.id); }
+      if (effectivePathId(r, r.level) === "shuffle") { cachePath(r, r.level); setActivePath(r.path.id); }
       piSend(r, { cmd: "set", userId: profileId, level: r.level, pathId: r.path.id, sessionLength: r.settings.sessionLength });
       piSend(r, { cmd: "calibrate" });
       setResult(null); setError(null);
       return;
     }
-    if (R.current.settings.pathId === "shuffle") { cachePath(R.current, R.current.level); setActivePath(R.current.path.id); }
+    if (effectivePathId(R.current, R.current.level) === "shuffle") { cachePath(R.current, R.current.level); setActivePath(R.current.path.id); }
     setCalStep(0); setCalCount(5); setResult(null); setError(null); setLive(EMPTY);
     R.current.phase = "calib"; setPhaseS("calib");
   }, [profileId]);
@@ -239,7 +285,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
       } else if (m.type === "state") {
         r.calStep = m.calStep; setCalStep(m.calStep); setCalCount(m.calCount); setNoise(Number(m.noise).toFixed(3));
         if (m.phase !== r.phase) {
-          if (m.phase === "run") { r.trace = []; setResult(null); setError(null); }
+          if (m.phase === "run") { r.trace = []; r.g = newGame(performance.now()); r.bandNow = 1; setResult(null); setError(null); }
           if (m.phase === "idle") { r.trace = []; setLive(EMPTY); }
           if (m.phase === "done") setSaving(true);
           setPhase(m.phase);
@@ -257,7 +303,11 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
         setHandLost(!m.finger);
         if (m.phase === "run") {
           setLive({ acc: m.acc == null ? "--" : String(Math.round(m.acc)), dev: m.dev == null ? "--" : Number(m.dev).toFixed(1), trem: Number(m.trem).toFixed(1), smooth: String(m.smooth), time: Number(m.time).toFixed(1), pct: m.pct, pulses: m.pulses });
-          if (m.finger && r.trace.length < 5000) r.trace.push([m.finger[0] * PX, m.finger[1] * PX, !!m.out]);
+          if (m.finger && r.trace.length < 5000) { r.trace.push([m.finger[0] * PX, m.finger[1] * PX, !!m.out]); const c = challengeById(r.settings.challenge), now = performance.now(), p = clamp((m.pct ?? 0) / 100, 0, 1);
+            const band = c.band(p); r.bandNow = band;
+            const tolMm = LEVELS[r.level - 1].toleranceMm, inBand = m.dev == null ? !m.out : Number(m.dev) <= tolMm * band;
+            const pv = r.trace.length > 1 ? r.trace[r.trace.length - 2] : null, last = r.trace[r.trace.length - 1];
+            gameStep(r.g, inBand, now, c, pv ? Math.hypot(last[0] - pv[0], last[1] - pv[1]) / PX * 30 : 0); }
         }
       } else if (m.type === "result") {
         setSaving(false);
@@ -317,6 +367,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
       const tol = LEVELS[r.level - 1].toleranceMm, P = r.pts;
       const path = () => { g.beginPath(); P.forEach((p, i) => (i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]))); };
       g.lineCap = "round"; g.lineJoin = "round";
+      if (r.game && r.phase === "run" && r.bandNow !== 1) { path(); g.strokeStyle = "rgba(227,168,87,.28)"; g.lineWidth = tol * 2 * r.bandNow * PX; g.stroke(); }
       if (r.settings.showTolerance) { path(); g.strokeStyle = "rgba(90,164,214,.24)"; g.lineWidth = tol * 2 * PX; g.stroke(); }
       path(); g.setLineDash([7, 8]); g.strokeStyle = "rgba(166,202,200,.55)"; g.lineWidth = 1.6; g.stroke(); g.setLineDash([]);
       const s = P[0], f = P[P.length - 1];
@@ -324,10 +375,12 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
       g.strokeStyle = "#A6CAC8"; g.lineWidth = 3; g.beginPath(); g.arc(f[0], f[1], 8, 0, 7); g.stroke();
       const T = r.trace, heat = r.settings.traceStyle === "heat";
       g.lineWidth = 2.6;
+      if (r.game) { g.shadowColor = "#5AA4D6"; g.shadowBlur = 10; }
       for (let i = 1; i < T.length; i++) {
         g.strokeStyle = heat && T[i][2] ? "#E3A857" : "#A6CAC8";
         g.beginPath(); g.moveTo(T[i - 1][0], T[i - 1][1]); g.lineTo(T[i][0], T[i][1]); g.stroke();
       }
+      g.shadowBlur = 0;
       if (r.mode === "pi" && r.cursor && r.phase !== "run") { // live fingertip, so you can line up with the start point
         g.strokeStyle = "#5AA4D6"; g.lineWidth = 3; g.beginPath(); g.arc(r.cursor[0], r.cursor[1], 11, 0, 7); g.stroke();
         g.fillStyle = "#5AA4D6"; g.beginPath(); g.arc(r.cursor[0], r.cursor[1], 3, 0, 7); g.fill();
@@ -336,6 +389,19 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
         const p = T[T.length - 1], hot = now < r.hapUntil;
         if (hot) { const rr = 12 + ((now / 12) % 24); g.strokeStyle = `rgba(61,133,113,${1 - (rr - 12) / 24})`; g.lineWidth = 3; g.beginPath(); g.arc(p[0], p[1], rr, 0, 7); g.stroke(); }
         g.fillStyle = hot ? "#3D8571" : "#A6CAC8"; g.beginPath(); g.arc(p[0], p[1], 7, 0, 7); g.fill();
+      }
+      if (r.game && r.phase === "run") {
+        const gm = r.g, col = gm.combo >= 4 ? "#E3A857" : gm.combo >= 2 ? "#5AA4D6" : "#A6CAC8";
+        g.save();
+        g.textBaseline = "top"; g.font = "800 34px Montserrat, sans-serif"; g.shadowColor = col; g.shadowBlur = 14; g.fillStyle = col;
+        g.fillText("x" + gm.combo, 24, 20);
+        g.shadowBlur = 0; g.font = "700 16px Karla, sans-serif"; g.fillStyle = "#A6CAC8";
+        g.fillText(`${Math.round(gm.points)} pts · ${gm.chain}-hit combo`, 24, 60);
+        const frac = gm.combo >= COMBO_MAX ? 1 : (gm.streak % COMBO_STEP_S) / COMBO_STEP_S;
+        g.fillStyle = "rgba(166,202,200,.15)"; g.fillRect(24, 88, 120, 6); g.fillStyle = col; g.fillRect(24, 88, 120 * frac, 6);
+        g.restore();
+        const age = now - gm.flash;
+        if (T.length && age < 700) { const p = T[T.length - 1]; g.strokeStyle = `rgba(227,168,87,${1 - age / 700})`; g.lineWidth = 3; g.beginPath(); g.arc(p[0], p[1], 14 + age / 10, 0, 7); g.stroke(); }
       }
     };
 
@@ -356,6 +422,9 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
         for (const p of r.pts) { const d = (p[0] - x) ** 2 + (p[1] - y) ** 2; if (d < md) md = d; }
         const devNow = Math.sqrt(md) / PX, out = devNow > tol;
         r.trace.push([x, y, out]);
+        { const c = challengeById(r.settings.challenge), band = c.band(tt); r.bandNow = band;
+          const pv = r.trace.length > 1 ? r.trace[r.trace.length - 2] : null;
+          gameStep(r.g, devNow <= tol * band, now, c, pv ? Math.hypot(x - pv[0], y - pv[1]) / PX * 60 : 0); }
         const A = r.acc;
         A.n++; if (!out) A.in++; A.dev += devNow; A.tr += (trAmp * 0.707) ** 2;
         if (out && !r.wasOut) A.pulses++;
@@ -389,7 +458,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
   // ---- derived UI ----
   const lv = LEVELS[level - 1];
   const phaseLabel = { idle: "ready", calib: "calibrating", run: "recording", done: "complete" }[phase];
-  const primaryLabel = (simple ? { idle: "Start practice", calib: "Cancel", run: "Stop", done: "Practice again" } : { idle: "Calibrate & start", calib: "Cancel", run: "Stop", done: "New session" })[phase];
+  const primaryLabel = (game ? { idle: "Play", calib: "Cancel", run: "Stop", done: "Play again" } : simple ? { idle: "Start practice", calib: "Cancel", run: "Stop", done: "Practice again" } : { idle: "Calibrate & start", calib: "Cancel", run: "Stop", done: "New session" })[phase];
   const steel = "#5AA4D6", bad = "#E3A857";
   const trend = (v: string, ref: number | undefined, hi: boolean, d = 1) => {
     if (v === "--" || ref === undefined) return { text: ref === undefined && v !== "--" ? "first session" : "▲ vs last", color: steel };
@@ -408,7 +477,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
   return (
     <>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap", padding: "8px 0 4px" }}>
-        <h1 className="head" style={{ margin: 0, fontSize: "clamp(34px,4vw,52px)", lineHeight: 1, letterSpacing: "-.01em" }}>{simple ? "Practice" : "Live Session"}</h1>
+        <h1 className="head" style={{ margin: 0, fontSize: "clamp(34px,4vw,52px)", lineHeight: 1, letterSpacing: "-.01em" }}>{game ? "Arena" : simple ? "Practice" : "Live Session"}</h1>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
           <button className="ctl" onClick={() => setLevel(level % (simple ? Math.max(1, startLevel) : 5) + 1)} disabled={phase === "run" || (simple && startLevel <= 1)} title={simple ? (startLevel <= 1 ? "Reach a score of 75 three times to unlock the next exercise" : "Switch exercise") : undefined}>
             <span className="muted">{simple ? "Exercise:" : "Level:"}</span><b>{simple ? `${lv.name} (level ${level})` : `L${level} ${lv.name}`}</b>{(!simple || startLevel > 1) && <span className="muted" style={{ fontSize: 11 }}>▾</span>}
@@ -440,6 +509,20 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
             </div>
           </div>
 
+          {game && (phase === "idle" || phase === "done") && (
+            <div role="radiogroup" aria-label="Challenge" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {CHALLENGES.map((c) => {
+                const on = settings.challenge === c.id;
+                return (
+                  <button key={c.id} role="radio" aria-checked={on} onClick={() => setSettings((st) => ({ ...st, challenge: c.id }))} title={c.tagline}
+                    className="hov" style={{ border: 0, cursor: "pointer", height: 38, padding: "0 16px", borderRadius: 999, fontSize: 13, fontWeight: 700, background: on ? "var(--accent)" : "var(--pill)", color: on ? "var(--on-accent)" : "var(--cream)" }}>
+                    {c.name}
+                  </button>
+                );
+              })}
+              <span style={{ flexBasis: "100%", fontSize: 13, color: "rgba(166,202,200,.8)" }}>{challengeById(settings.challenge).tagline} Points and combos change per challenge; accuracy, tremor and smoothness are measured the same way every time.</span>
+            </div>
+          )}
           {simple && phase === "idle" && (
             <ol style={{ display: "flex", flexWrap: "wrap", gap: 10, margin: 0, padding: 0, listStyle: "none", fontSize: 14 }}>
               {["Put on the wristband", "Hold still for 5 seconds", "Trace the dashed line — stay inside the band"].map((t, i) => (
@@ -510,7 +593,10 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
                     <button className="btn btn-cream" onClick={startCalib} style={{ alignSelf: "flex-start", height: 46, padding: "0 22px", fontSize: 14 }}>Run again</button>
                   </div>
                 )}
-                {result && simple && (
+                {result && game && (
+                  <GameResult challenge={challengeById(settings.challenge).name} level={level} chain={gameStats.chain} acc={result.acc} time={result.time} detail={simple ? undefined : [["Deviation", `${result.dev} mm`], ["Tremor", `${result.trem}/10`], ["Smoothness", String(result.smooth)], ["Haptic", `${result.pulses}×`]]} score={result.score} points={gameStats.points} bestCombo={gameStats.best} counted={result.counted} isBest={result.isBest} promoted={result.promoted} demo={result.demo} onAgain={startCalib} onProgress={() => router.push(`/p/${profileId}/progress`)} />
+                )}
+                {result && !game && simple && (
                   <>
                     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                       <span className="head muted" style={{ fontSize: 18 }}>Your score</span>
@@ -542,7 +628,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
                     </div>
                   </>
                 )}
-                {result && !simple && (
+                {result && !game && !simple && (
                   <>
                     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                       <span className="head muted" style={{ fontSize: 18 }}>Session score</span>

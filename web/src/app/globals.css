@@ -111,3 +111,23 @@ summary.ctl::-webkit-details-marker { display: none; }
 @media (prefers-reduced-motion: reduce) {
   .splash-logo, .splash-a, .splash-b, .splash-quote, .splash-skip { animation: none; }
 }
+
+/* ---- Game mode (cookie st_game): same palette, more energy ---- */
+[data-game="on"] .card { box-shadow: 0 0 0 1px rgba(90, 164, 214, 0.1), 0 10px 30px -18px rgba(61, 133, 113, 0.55); }
+[data-game="on"] .btn-accent { background: linear-gradient(135deg, var(--accent), #3a8fb0); box-shadow: 0 6px 18px -8px rgba(90, 164, 214, 0.7); }
+[data-game="on"] .btn-accent:hover { filter: brightness(1.12); transform: translateY(-1px); }
+[data-game="on"] h1.head { background: linear-gradient(90deg, var(--cream), var(--steel)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+.badge-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
+.badge { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 22px; background: var(--pill); transition: transform .15s, background-color .15s; }
+.badge:hover { transform: translateY(-2px); background: var(--pill-hover); }
+.badge.locked { opacity: 0.45; filter: grayscale(0.7); }
+.badge-ico { flex: none; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-family: var(--font-head); background: linear-gradient(135deg, var(--accent), var(--steel)); color: var(--on-accent); }
+
+@keyframes st-confetti { 0% { transform: translate3d(0, -20px, 0) rotate(0); opacity: 1; } 100% { transform: translate3d(var(--dx), 420px, 0) rotate(var(--rot)); opacity: 0; } }
+@keyframes st-pop { 0% { transform: scale(0.2) rotate(-20deg); opacity: 0; } 70% { transform: scale(1.25) rotate(6deg); opacity: 1; } 100% { transform: scale(1) rotate(0); } }
+.confetti { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.confetti i { position: absolute; top: 0; width: 8px; height: 14px; border-radius: 2px; animation: st-confetti 2.4s ease-out forwards; }
+.star { display: inline-block; font-size: 54px; line-height: 1; animation: st-pop 0.5s cubic-bezier(0.2, 1.4, 0.4, 1) both; }
+.star.off { opacity: 0.18; }
+@media (prefers-reduced-motion: reduce) { .confetti i, .star { animation: none; } }
