@@ -145,3 +145,13 @@ def test_standalone_sketch_output_is_read_and_buzz_is_not_doubled():
     assert sent == [b"D\n", b"B\n"]
     rig.ser.write = lambda b: None
     rig.close()
+
+
+def test_hold_trials_default_to_30_seconds_and_path_trials_to_12():
+    from engine import HOLD_LENGTH_S
+    from rig import SimulatedRig
+    from server import Runner
+
+    hold = Runner(SimulatedRig(realtime=False), True, "http://x", task="hold")
+    path = Runner(SimulatedRig(realtime=False), True, "http://x", task="path")
+    assert hold.engine.length_s == HOLD_LENGTH_S == 30.0 and path.engine.length_s == 12.0

@@ -16,7 +16,7 @@ import json
 import threading
 import time
 
-from engine import EngineError, SessionEngine
+from engine import HOLD_LENGTH_S, EngineError, SessionEngine
 from paths import load_paths
 from screen import load_screener
 from uploader import UploadError, post_session
@@ -29,6 +29,8 @@ class Runner:
         self.rig, self.simulated, self.site, self.api_key = rig, simulated, site, api_key
         self.engine = SessionEngine(fs=fs, haptic=rig.buzz, screener=screener, haptic_fx=rig.play)
         self.engine.task = task
+        if task == "hold":
+            self.engine.length_s = HOLD_LENGTH_S
         self.clients, self.user_id, self.loop = set(), None, None
         self._stop = threading.Event()
         self._seen_version = -1

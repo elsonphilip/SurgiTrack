@@ -62,8 +62,8 @@ interface Result {
   screening?: { tremorProbability: number }; demo?: boolean;
 }
 export interface LastSession { acc: number; dev: number; trem: number; smooth: number }
-interface Settings { sessionLength: number; traceStyle: "heat" | "mono"; showTolerance: boolean; showCamera: boolean; pathId: string; source: "sim" | "pi"; piUrl: string }
-const DEFAULTS: Settings = { sessionLength: 12, traceStyle: "heat", showTolerance: true, showCamera: true, pathId: "", source: "pi", piUrl: "ws://localhost:8765" };
+interface Settings { sessionLength: number; holdLength: number; traceStyle: "heat" | "mono"; showTolerance: boolean; showCamera: boolean; pathId: string; source: "sim" | "pi"; piUrl: string }
+const DEFAULTS: Settings = { sessionLength: 12, holdLength: 30, traceStyle: "heat", showTolerance: true, showCamera: true, pathId: "", source: "pi", piUrl: "ws://localhost:8765" };
 
 /** "" = the level's original design path, "shuffle" = random path from the level each run, else a path id. */
 function resolvePath(level: number, pathId: string, avoidId?: string): PathDef {
@@ -75,6 +75,9 @@ function resolvePath(level: number, pathId: string, avoidId?: string): PathDef {
   const p = pathId ? getPath(pathId) : undefined;
   return p && p.level === level ? p : defaultPath(level);
 }
+/** Length of the current trial in seconds: a steady hold lasts holdLength (30 s), a path trace sessionLength (12 s). */
+const runLen = (r: { task: string; settings: Settings }) => (r.task === "hold" ? r.settings.holdLength : r.settings.sessionLength);
+
 /** Steady-hold has no path: the "course" is a straight line and your tremor decides how far the trace wobbles off it. */
 const HOLD_X0 = 80, HOLD_X1 = 880;
 const holdLine = () => Array.from({ length: 320 }, (_, i) => [HOLD_X0 + ((HOLD_X1 - HOLD_X0) * i) / 319, H / 2]);
@@ -170,7 +173,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
     r.game = game;
     if (r.phase === "run") return;
     cachePath(r, r.level); r.trace = []; setActivePath(r.path.id);
-    if (r.mode === "pi") piSend(r, { cmd: "set", userId: profileId, level: r.level, pathId: r.path.id, sessionLength: r.settings.sessionLength, game: r.game });
+    if (r.mode === "pi") piSend(r, { cmd: "set", userId: profileId, level: r.level, pathId: r.path.id, sessionLength: runLen(r), game: r.game });
   }, [game, profileId]);
 
   useEffect(() => {
@@ -232,7 +235,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
     if (R.current.mode === "pi") {
       const r = R.current;
       if (r.settings.pathId === "shuffle") { cachePath(r, r.level); setActivePath(r.path.id); }
-      piSend(r, { cmd: "set", userId: profileId, level: r.level, pathId: r.path.id, sessionLength: r.settings.sessionLength, game: r.game });
+      piSend(r, { cmd: "set", userId: profileId, level: r.level, pathId: r.path.id, sessionLength: runLen(r), game: r.game });
       piSend(r, { cmd: "calibrate" });
       setResult(null); setError(null);
       return;
@@ -293,7 +296,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
       if (m.type === "hello") {
         setPiStatus("online"); setPiSim(!!m.simulated); setPiCamera(!!m.camera);
         applyTask(m.task === "hold" ? "hold" : "path");
-        piSend(r, { cmd: "set", userId: profileId, level: r.level, pathId: r.path.id, sessionLength: r.settings.sessionLength, game: r.game });
+        piSend(r, { cmd: "set", userId: profileId, level: r.level, pathId: r.path.id, sessionLength: runLen(r), game: r.game });
       } else if (m.type === "state") {
         if (m.task) applyTask(m.task === "hold" ? "hold" : "path");
         r.limit = Number(m.tolerance) || r.limit;
@@ -800,8 +803,8 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
               )}
               <label style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
                 Session length
-                <input type="number" min={5} max={40} value={settings.sessionLength} disabled={phase === "run"}
-                  onChange={(e) => setSettings((s) => ({ ...s, sessionLength: clamp(Number(e.target.value) || 12, 5, 40) }))}
+                <input type="number" min={5} max={40} value={hold ? settings.holdLength : settings.sessionLength} disabled={phase === "run"}
+                  onChange={(e) => setSettings((s) => (hold ? { ...s, holdLength: clamp(Number(e.target.value) || 30, 5, 40) } : { ...s, sessionLength: clamp(Number(e.target.value) || 12, 5, 40) }))}
                   className="mono" style={{ width: 70, height: 34, borderRadius: 999, border: 0, background: "var(--pill)", color: "var(--cream)", padding: "0 12px" }} />
               </label>
               <label style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>

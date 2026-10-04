@@ -25,6 +25,7 @@ TICK_GAP_S, BURST_GAP_S = 0.5, 0.12
 SECTIONS = 4  # a clean quarter of the path earns a success pulse
 # Steady-hold task (IMU only, no camera): the tremor index (0-10) must stay under a limit that tightens with level.
 HOLD_LIMIT = {1: 4.0, 2: 3.5, 3: 3.0, 4: 2.5, 5: 2.0}
+HOLD_LENGTH_S = 30.0   # default length of a steady-hold trial (path trials stay 12 s)
 HOLD_STEP_S = 0.1      # re-evaluate the live tremor 10 times a second
 HOLD_WARMUP_S = 1.0    # no counting or buzzing in the first second (the filters need to settle)
 # Standalone-band input: the sketch (FOR_PI = false) reports its own 4-12 Hz tremor RMS in g. TREMOR_FULL_G maps that to the
