@@ -65,7 +65,7 @@ interface Result {
 }
 export interface LastSession { acc: number; dev: number; trem: number; smooth: number }
 interface Settings { sessionLength: number; holdLength: number; traceStyle: "heat" | "mono"; showTolerance: boolean; showCamera: boolean; pathId: string; source: "sim" | "pi" | "cam"; piUrl: string }
-const DEFAULTS: Settings = { sessionLength: 12, holdLength: 30, traceStyle: "heat", showTolerance: true, showCamera: true, pathId: "", source: "pi", piUrl: "ws://localhost:8765" };
+const DEFAULTS: Settings = { sessionLength: 12, holdLength: 30, traceStyle: "heat", showTolerance: true, showCamera: true, pathId: "", source: "cam", piUrl: "ws://localhost:8765" };
 
 /** "" = the level's original design path, "shuffle" = random path from the level each run, else a path id. */
 function resolvePath(level: number, pathId: string, avoidId?: string): PathDef {
@@ -239,7 +239,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
 
   useEffect(() => {
     try {
-      const raw = localStorage.getItem("surgitrack.settings");
+      const raw = localStorage.getItem("surgitrack.settings.v2");
       if (raw) {
         const merged = { ...DEFAULTS, ...JSON.parse(raw) } as Settings;
         R.current.settings = merged;
@@ -255,7 +255,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
   useEffect(() => {
     R.current.settings = settings;
     if (!hydrated) return; // (React strict mode runs effects twice in development: writing defaults before reading would erase the saved settings)
-    try { localStorage.setItem("surgitrack.settings", JSON.stringify(settings)); } catch {}
+    try { localStorage.setItem("surgitrack.settings.v2", JSON.stringify(settings)); } catch {}
   }, [settings, hydrated]);
 
   const finish = useCallback(async (el: number) => {
@@ -609,6 +609,13 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
             <span className="muted">{game ? "Mission:" : hold ? "Level:" : simple ? "Exercise:" : "Level:"}</span><b>{game ? `${level} · ${missionName(level)}` : hold ? `Level ${level}` : simple ? `${lv.name} (level ${level})` : `L${level} ${lv.name}`}</b>{(!simple || startLevel > 1) && <span className="muted" style={{ fontSize: 11 }}>▾</span>}
           </button>
           <div className="ctl" title={simple ? "How far you can drift from the line before the band buzzes" : undefined}><span className="muted">{hold ? "Tremor limit:" : game ? "Corridor:" : simple ? "Allowed wobble:" : "Tolerance:"}</span><b>{hold ? `${HOLD_LIMIT[level]} / 10` : `±${lv.toleranceMm} mm`}</b></div>
+          <label className="ctl" title="Where the movement data comes from" style={{ cursor: "pointer" }}>
+            <span className="muted">Source:</span>
+            <select value={settings.source} disabled={phase === "run" || phase === "calib"} onChange={(e) => setSettings((st) => ({ ...st, source: e.target.value as Settings["source"] }))}
+              style={{ border: 0, background: "transparent", color: "var(--cream)", fontWeight: 700, font: "inherit", cursor: "pointer" }}>
+              <option value="cam">Webcam</option><option value="pi">Wristband (tracker)</option><option value="sim">Demo simulator</option>
+            </select>
+          </label>
           <button className="btn btn-accent" disabled={settings.source === "pi" && piStatus !== "online"} onClick={() => (phase === "idle" || phase === "done" ? startCalib() : cancel())}>{primaryLabel}</button>
         </div>
       </div>
@@ -661,7 +668,11 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
           )}
           {settings.source === "pi" && piStatus === "offline" && phase === "idle" && (
             <div role="status" style={{ padding: "12px 16px", borderRadius: 16, background: "var(--pill)", fontSize: 13.5, lineHeight: 1.5 }}>
-              <b>Tracker not running.</b> In a terminal, run <span className="mono" style={{ color: "var(--cream)" }}>python tracker/server.py --serial &lt;PORT&gt; --device trainer</span> (or add <span className="mono">--simulate --task hold</span> to try it without the band). To use the built-in demo instead, open Settings and set Data source to Simulator.
+              <b>Tracker not running.</b> In a terminal, run <span className="mono" style={{ color: "var(--cream)" }}>python tracker/server.py --serial &lt;PORT&gt; --device trainer</span> (or add <span className="mono">--simulate --task hold</span> to try it without the band).
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+                <button className="btn btn-cream" onClick={() => setSettings((st) => ({ ...st, source: "cam" }))} style={{ height: 38, padding: "0 18px", fontSize: 13.5 }}>Use my webcam instead</button>
+                <button className="btn hov" onClick={() => setSettings((st) => ({ ...st, source: "sim" }))} style={{ height: 38, padding: "0 18px", fontSize: 13.5, fontWeight: 600, background: "var(--card)" }}>Use the demo simulator</button>
+              </div>
             </div>
           )}
           {camMode && camMessage && phase !== "calib" && (
