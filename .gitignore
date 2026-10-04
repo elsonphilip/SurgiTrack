@@ -4,3 +4,5 @@ __pycache__/
 .venv/
 models/hand_landmarker.task
 models/*.part
+web/public/mediapipe/
+web/public/models/

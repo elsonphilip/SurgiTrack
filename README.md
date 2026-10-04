@@ -20,6 +20,21 @@ feedback back to the user (DRV2605L). A camera + MediaPipe Hands tracks path; th
 cd pi && pip install -r requirements.txt && pytest
 python recorder.py --port /dev/ttyACM0 --user u01 --task steady_hold --label steady --seconds 30
 ```
+## Webcam mode (hand tracking in the browser, no Python needed)
+
+In **Live → Settings → Data source → Webcam (this computer)** the site asks your browser for the camera when you press Start, runs
+MediaPipe hand tracking right in the page (the video never leaves your computer), and your **index fingertip** flies the path
+game. Steps: allow the camera → show your hand (your hand size is the ruler: wrist to middle knuckle ≈ 95 mm) → hold still
+for 5 s (resting fingertip jitter becomes the tremor baseline) → trace the path.
+
+- Accuracy and deviation are exact against the path; **tremor is an estimate** from 4-12 Hz fingertip jitter (a camera sees ~30
+  frames a second), not the wristband's accelerometer. Treat it as a trainer, not a measurement.
+- Sessions save as real device sessions with no raw movement data, so they can't train the tremor model.
+- Setup files (MediaPipe's WASM and the ~8 MB hand model) are fetched/copied automatically by `npm run dev`
+  (`web/scripts/setup-mediapipe.mjs`). If the camera says it can't load the model: `node web/scripts/setup-mediapipe.mjs`.
+- Works on `http://localhost:3000` (browsers allow the camera on localhost). Close Zoom/Teams/FaceTime first if it says the
+  camera is busy. `npm run check:cam` runs sanity checks on the webcam maths.
+
 ## Wristband only (no camera): steady-hold sessions
 
 With just the BMI270 + DRV2605L wristband (`firmware/surgitrack_trainer`), run

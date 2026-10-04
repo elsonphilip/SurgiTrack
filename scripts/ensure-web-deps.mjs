@@ -8,10 +8,12 @@ import { fileURLToPath } from "node:url";
 
 const web = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "web");
 const lock = path.join(web, "package-lock.json");
+const pkg = path.join(web, "package.json");
 const stamp = path.join(web, "node_modules", ".surgitrack-lock-hash");
 const hash = (f) => createHash("sha1").update(readFileSync(f)).digest("hex");
 
-const want = existsSync(lock) ? hash(lock) : "";
+// package-lock.json is not committed, so also watch package.json: adding a dependency re-runs the install
+const want = (existsSync(lock) ? hash(lock) : "") + hash(pkg);
 const have = existsSync(stamp) ? readFileSync(stamp, "utf8") : "";
 
 if (!existsSync(path.join(web, "node_modules")) || want !== have) {
@@ -21,3 +23,6 @@ if (!existsSync(path.join(web, "node_modules")) || want !== have) {
   mkdirSync(path.join(web, "node_modules"), { recursive: true });
   writeFileSync(stamp, want);
 }
+
+// In-browser webcam hand tracking: copy its WASM files and fetch the model if needed (cheap when already done).
+spawnSync(process.execPath, [path.join(web, "scripts", "setup-mediapipe.mjs")], { stdio: "inherit" });

@@ -7,7 +7,9 @@ import { COMBO_MAX, COMBO_STEP_S, HIT_S } from "@/lib/game";
 import { coachingTip, gradeWord, smoothWord, tremorWord } from "@/lib/coach";
 import { defaultPath, getPath, pathsForLevel, samplePath, type PathDef } from "@/lib/paths";
 import type { RawSample } from "@/lib/types";
-import { saveSimulatedSession } from "@/app/actions";
+import { saveSimulatedSession, saveWebcamSession } from "@/app/actions";
+import { CamRun } from "@/lib/cam-session";
+import { useWebcamTracker, type CamFrame } from "./useWebcamTracker";
 import { useLive } from "./Shell";
 import { BleedLines, CardHead, Stat } from "./ui";
 import { GameResult } from "./GameResult";
@@ -62,7 +64,7 @@ interface Result {
   screening?: { tremorProbability: number }; demo?: boolean;
 }
 export interface LastSession { acc: number; dev: number; trem: number; smooth: number }
-interface Settings { sessionLength: number; holdLength: number; traceStyle: "heat" | "mono"; showTolerance: boolean; showCamera: boolean; pathId: string; source: "sim" | "pi"; piUrl: string }
+interface Settings { sessionLength: number; holdLength: number; traceStyle: "heat" | "mono"; showTolerance: boolean; showCamera: boolean; pathId: string; source: "sim" | "pi" | "cam"; piUrl: string }
 const DEFAULTS: Settings = { sessionLength: 12, holdLength: 30, traceStyle: "heat", showTolerance: true, showCamera: true, pathId: "", source: "pi", piUrl: "ws://localhost:8765" };
 
 /** "" = the level's original design path, "shuffle" = random path from the level each run, else a path id. */
@@ -108,6 +110,13 @@ const CAL = [
   { title: "Stay completely still", body: "Recording your resting noise floor. Tremor is scored relative to this baseline — breathe normally, don’t move." },
   { title: "Baseline established", body: "Orientation and noise floor saved for this session.", btn: "Begin training" },
 ];
+const CAL_CAM = [
+  { title: "Allow the camera", body: "Your browser will ask to use the camera. Click Allow. The video stays on this computer and is never uploaded.", btn: "Continue" },
+  { title: "Show your hand", body: "Hold your hand about an arm's length from the camera, palm toward it, index finger out, with your whole hand in view. Your hand size becomes the ruler.", btn: "Lock scale" },
+  { title: "Stay completely still", body: "Recording how much your fingertip shakes at rest. Tremor is scored relative to this baseline, so breathe normally and hold the position." },
+  { title: "Baseline established", body: "Hand scale and resting steadiness saved for this session.", btn: "Begin training" },
+];
+const CAL_CAM_LABELS = ["Camera on", "Hand in view", "Hold still · 5 s", "Baseline locked"];
 const CAL_LABELS = ["Wristband on", "Neutral position", "Hold still · 5 s", "Baseline locked"];
 const IMU_K = ["ax g", "ay g", "az g", "gx °/s", "gy °/s", "gz °/s"];
 const OFF = "rgba(166,202,200,.08)";
@@ -151,6 +160,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
   const [piSim, setPiSim] = useState(false);
   const [piCamera, setPiCamera] = useState(false);
   const [task, setTaskS] = useState<"path" | "hold">("path");
+  const [hydrated, setHydrated] = useState(false); // saved settings have been read; only then may they be written back
   const [bandOnly, setBandOnly] = useState(false); // the band reports only its own tremor level (standalone sketch)
   const [video, setVideo] = useState<string | null>(null);
   const [handLost, setHandLost] = useState(false);
@@ -161,7 +171,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
   const R = useRef({
     phase: (autoStart ? "calib" : "idle") as Phase, level, calStep: 0, trace: [] as [number, number, boolean][], pts: [] as number[][], path: defaultPath(Math.min(Math.max(startLevel, 1), 5)),
     acc: { n: 0, in: 0, dev: 0, tr: 0, pulses: 0 }, wasOut: false, hapUntil: 0, t0: 0, m0: 0, lastUi: 0,
-    g: newGame(0), game: false, task: "path" as "path" | "hold", limit: 3, hpm: 0, hpv: 1e-6, decor: [] as Decor[], hapKind: null as string | null, hx: [] as number[], hy: [] as number[], raw: [] as RawSample[], settings: DEFAULTS, mode: "sim" as "sim" | "pi", ws: null as WebSocket | null, cursor: null as [number, number] | null, ct: 0 as unknown as ReturnType<typeof setInterval>,
+    g: newGame(0), game: false, cam: new CamRun(), task: "path" as "path" | "hold", limit: 3, hpm: 0, hpv: 1e-6, decor: [] as Decor[], hapKind: null as string | null, hx: [] as number[], hy: [] as number[], raw: [] as RawSample[], settings: DEFAULTS, mode: "sim" as "sim" | "pi" | "cam", ws: null as WebSocket | null, cursor: null as [number, number] | null, ct: 0 as unknown as ReturnType<typeof setInterval>,
   });
 
   const setPhase = (p: Phase) => {
@@ -176,6 +186,57 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
     if (r.mode === "pi") piSend(r, { cmd: "set", userId: profileId, level: r.level, pathId: r.path.id, sessionLength: runLen(r), game: r.game });
   }, [game, profileId]);
 
+  // ---- Webcam source: the browser asks for the camera and MediaPipe tracks the index fingertip ----
+  const finishCamRef = useRef<() => void>(() => {});
+  const onCamFrame = useCallback((f: CamFrame) => {
+    const r = R.current;
+    if (r.mode !== "cam") return;
+    setHandLost(f.lm === null);
+    if (!f.lm) { r.cursor = null; return; }
+    const mm = r.cam.ruler.map(f.lm, f.w, f.h);
+    // Scoring uses the true position; the drawn ship/cursor is kept on the canvas so you can always see where you are.
+    r.cursor = [clamp(mm[0] * PX, 8, W - 8), clamp(mm[1] * PX, 8, H - 8)];
+    if (r.phase === "calib" && r.calStep === 2) r.cam.pushStill(f.t, mm);
+    if (r.phase !== "run") return;
+    const now = performance.now(), el = (now - r.t0) / 1000, tt = clamp(el / r.settings.sessionLength, 0, 1);
+    const o = r.cam.push(f.t, mm);
+    if (r.trace.length < 5000) r.trace.push([clamp(o.x, 8, W - 8), clamp(o.y, 8, H - 8), o.out]);
+    gameStep(r.g, !o.out, now, tt);
+    if (o.out) { r.hapUntil = now + 220; r.hapKind = "buzz"; } // visual cue only: there is no wristband on this source
+    if (now - r.lastUi > 120) {
+      r.lastUi = now;
+      const st = r.cam.liveStats();
+      setLive({ acc: st.acc == null ? "--" : String(Math.round(st.acc)), dev: o.dev.toFixed(1), trem: st.tremor.toFixed(1), smooth: String(Math.round(st.smooth)), time: el.toFixed(1), pct: Math.round(tt * 100), pulses: st.pulses });
+      setHapticOn(now < r.hapUntil);
+    }
+  }, []);
+  const { videoRef: camVideoRef, overlayRef: camOverlayRef, status: camStatus, message: camMessage, handVisible: camHand, start: camStart, stop: camStop } = useWebcamTracker(onCamFrame);
+  const finishCam = async () => {
+    const r = R.current;
+    if (r.phase !== "run") return;
+    const el = (performance.now() - r.t0) / 1000;
+    setPhase("done");
+    setHapticOn(false); setSaving(true); setError(null);
+    const m = r.cam.metrics(el);
+    if (!m) { setSaving(false); setResult(null); setError("Your hand wasn't tracked during the run. Keep it in view of the camera and try again."); return; }
+    try {
+      const res = await saveWebcamSession({ userId: profileId, level: r.level, pathId: r.path.id, metrics: m, baseline: { pitch: 0, roll: 0, noiseSigma: Number(r.cam.sigma.toFixed(4)) } });
+      setResult({ ...res, acc: m.accuracy, dev: m.avgDeviationMm, trem: m.tremor, smooth: m.smoothness, time: m.completionTimeS, pulses: m.hapticPulses, demo: false });
+      router.refresh();
+    } catch (e) {
+      setError((e as Error).message || "Could not save session"); setResult(null);
+    } finally {
+      setSaving(false);
+    }
+  };
+  useEffect(() => { finishCamRef.current = finishCam; });
+  useEffect(() => {
+    if (settings.source !== "cam") return;
+    const r = R.current;
+    r.mode = "cam";
+    return () => { r.mode = "sim"; r.cursor = null; setHandLost(false); camStop(); };
+  }, [settings.source, camStop]);
+
   useEffect(() => {
     try {
       const raw = localStorage.getItem("surgitrack.settings");
@@ -189,11 +250,13 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
         /* eslint-enable react-hooks/set-state-in-effect */
       }
     } catch {}
+    setHydrated(true);
   }, []);
   useEffect(() => {
     R.current.settings = settings;
+    if (!hydrated) return; // (React strict mode runs effects twice in development: writing defaults before reading would erase the saved settings)
     try { localStorage.setItem("surgitrack.settings", JSON.stringify(settings)); } catch {}
-  }, [settings]);
+  }, [settings, hydrated]);
 
   const finish = useCallback(async (el: number) => {
     const r = R.current, A = r.acc;
@@ -225,6 +288,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
   const startRun = () => {
     const r = R.current;
     r.trace = []; r.raw = []; r.acc = { n: 0, in: 0, dev: 0, tr: 0, pulses: 0 }; r.wasOut = false; r.t0 = performance.now(); r.g = newGame(r.t0);
+    if (r.mode === "cam") r.cam.beginRun(r.pts, LEVELS[r.level - 1].toleranceMm, PX, r.t0);
     setResult(null); setError(null);
     setPhase("run");
   };
@@ -232,6 +296,14 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
     clearInterval(R.current.ct);
     R.current.trace = [];
     R.current.calStep = 0;
+    if (R.current.mode === "cam") {
+      const r = R.current;
+      r.cam = new CamRun();
+      if (r.settings.pathId === "shuffle") { cachePath(r, r.level); setActivePath(r.path.id); }
+      r.phase = "calib"; setPhaseS("calib"); setCalStep(0); setCalCount(5); setResult(null); setError(null); setLive(EMPTY);
+      void camStart(); // the browser's permission prompt appears now (this runs from a click)
+      return;
+    }
     if (R.current.mode === "pi") {
       const r = R.current;
       if (r.settings.pathId === "shuffle") { cachePath(r, r.level); setActivePath(r.path.id); }
@@ -243,8 +315,25 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
     if (R.current.settings.pathId === "shuffle") { cachePath(R.current, R.current.level); setActivePath(R.current.path.id); }
     setCalStep(0); setCalCount(5); setResult(null); setError(null); setLive(EMPTY);
     R.current.phase = "calib"; setPhaseS("calib");
-  }, [profileId]);
+  }, [profileId, camStart]);
   const calNext = () => {
+    if (R.current.mode === "cam") {
+      const r = R.current;
+      if (calStep === 0) { if (camStatus === "ready") { setCalStep(1); r.calStep = 1; } }
+      else if (calStep === 1) {
+        if (!camHand) return;
+        r.cam.ruler.lock(); r.cam.beginStill();
+        setCalStep(2); r.calStep = 2; setCalCount(5);
+        let c = 5;
+        clearInterval(r.ct);
+        r.ct = setInterval(() => {
+          c -= 1;
+          if (c <= 0) { clearInterval(r.ct); setNoise(r.cam.endStill().toFixed(3)); setCalStep(3); r.calStep = 3; setCalCount(0); }
+          else setCalCount(c);
+        }, 1000);
+      } else if (calStep === 3) startRun();
+      return;
+    }
     if (R.current.mode === "pi") { piSend(R.current, { cmd: "calib_next" }); return; }
     const s = calStep;
     if (s === 0) { setCalStep(1); R.current.calStep = 1; }
@@ -289,7 +378,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
   // Python tracker data source: the tracker (tracker/server.py) streams frames + state over a WebSocket.
   useEffect(() => {
     const r = R.current;
-    if (settings.source !== "pi") return;
+    if (settings.source !== "pi" || !hydrated) return; // wait for the saved settings so camera/simulator users never open a tracker connection
     r.mode = "pi";
     let ws: WebSocket | null = null, closed = false, retry: ReturnType<typeof setTimeout> | undefined;
     const handle = (m: Record<string, any>) => { // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -376,7 +465,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
       r.task = "path"; setTaskS("path"); setBandOnly(false); cachePath(r, r.level);
       setPiStatus("off"); setVideo(null); setHandLost(false); setPhaseS("idle"); setLive(EMPTY); setHapticOn(false); setHaptic(false);
     };
-  }, [settings.source, settings.piUrl, profileId, router, setHaptic, setDist]);
+  }, [settings.source, settings.piUrl, profileId, router, setHaptic, setDist, hydrated]);
 
   // Main loop: simulate sensors + draw.
   useEffect(() => {
@@ -421,7 +510,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
         g.strokeStyle = heat && T[i][2] ? "#E3A857" : "#A6CAC8";
         g.beginPath(); g.moveTo(T[i - 1][0], T[i - 1][1]); g.lineTo(T[i][0], T[i][1]); g.stroke();
       }
-      if (r.mode === "pi" && r.cursor && r.phase !== "run") { // live fingertip, so you can line up with the start point
+      if ((r.mode === "pi" || r.mode === "cam") && r.cursor && r.phase !== "run") { // live fingertip, so you can line up with the start point
         g.strokeStyle = "#5AA4D6"; g.lineWidth = 3; g.beginPath(); g.arc(r.cursor[0], r.cursor[1], 11, 0, 7); g.stroke();
         g.fillStyle = "#5AA4D6"; g.beginPath(); g.arc(r.cursor[0], r.cursor[1], 3, 0, 7); g.fill();
       }
@@ -436,6 +525,9 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
       const now = performance.now(), e = (now - r.m0) / 1000, tol = LEVELS[r.level - 1].toleranceMm;
       if (r.mode === "pi") {
         // frames arrive over the WebSocket; nothing to simulate
+      } else if (r.mode === "cam") {
+        // fingertip frames arrive from the webcam hook; here we only watch the clock
+        if (r.phase === "run" && (now - r.t0) / 1000 >= r.settings.sessionLength) finishCamRef.current();
       } else if (r.phase === "run") {
         const len = r.settings.sessionLength;
         const el = (now - r.t0) / 1000, tt = Math.min(1, el / len);
@@ -502,7 +594,11 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
   }));
   const lcd1 = ("SCR " + pad(phase === "done" && result ? result.score : "--", 3) + " ACC" + pad(live.acc, 3) + "%").padEnd(16).slice(0, 16);
   const lcd2 = ("TRM" + pad(live.trem, 4) + " DEV" + pad(live.dev, 4)).padEnd(16).slice(0, 16);
-  const cal = CAL[calStep];
+  const camMode = settings.source === "cam";
+  const cal = (camMode ? CAL_CAM : CAL)[calStep];
+  const calLabels = camMode ? CAL_CAM_LABELS : CAL_LABELS;
+  const calBlocked = camMode && ((calStep === 0 && camStatus !== "ready") || (calStep === 1 && !camHand));
+  const camChip = camStatus === "ready" ? (camHand ? "WEBCAM · HAND FOUND" : "WEBCAM · SHOW YOUR HAND") : { off: "WEBCAM · OFF", loading: "WEBCAM · LOADING", asking: "WEBCAM · ALLOW ACCESS", denied: "WEBCAM · BLOCKED", nodevice: "WEBCAM · NOT FOUND", error: "WEBCAM · ERROR", ready: "" }[camStatus];
 
   return (
     <>
@@ -529,6 +625,8 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
                 <span className="chip" title={piStatus === "online" ? (piSim ? "Tracker is using its simulated rig" : "Live from the tracker") : "Tracker not reachable — start it with: python server.py (in the tracker folder)"} style={{ color: piStatus === "online" ? steel : "var(--warn)" }}>
                   {piStatus === "online" ? (piSim ? "TRACKER · SIMULATED" : "TRACKER · LIVE") : "TRACKER · OFFLINE"}
                 </span>
+              ) : camMode ? (
+                <span className="chip" title="Hand tracking runs in your browser (MediaPipe). Video never leaves this computer." style={{ color: camStatus === "ready" ? steel : "var(--warn)" }}>{camChip}</span>
               ) : (
                 <span className="chip" title="No hardware connected — sensor data is generated in the browser" style={{ color: steel }}>SIMULATED</span>
               )}
@@ -546,14 +644,14 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
           )}
           {simple && phase === "idle" && (
             <ol style={{ display: "flex", flexWrap: "wrap", gap: 10, margin: 0, padding: 0, listStyle: "none", fontSize: 14 }}>
-              {["Put on the wristband", "Hold still for 5 seconds", hold ? "Hold your hand steady — the band buzzes if you shake" : "Trace the dashed line — stay inside the band"].map((t, i) => (
+              {(camMode ? ["Allow the camera", "Show your hand and hold still for 5 seconds", "Trace the dashed line with your index finger"] : ["Put on the wristband", "Hold still for 5 seconds", hold ? "Hold your hand steady — the band buzzes if you shake" : "Trace the dashed line — stay inside the band"]).map((t, i) => (
                 <li key={t} style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--pill)", borderRadius: 999, padding: "6px 16px 6px 6px" }}>
                   <span style={{ width: 28, height: 28, borderRadius: "50%", background: "var(--cream)", color: "var(--card)", display: "grid", placeItems: "center", fontWeight: 700, fontSize: 13 }}>{i + 1}</span>{t}
                 </li>
               ))}
             </ol>
           )}
-          {settings.source === "pi" && piStatus === "online" && piCamera && handLost && phase !== "done" && (
+          {((settings.source === "pi" && piStatus === "online" && piCamera) || (camMode && camStatus === "ready")) && handLost && phase !== "done" && (
             <div role="status" style={{ padding: "10px 16px", borderRadius: 16, background: "var(--pill)", color: "var(--warn)", fontSize: 13.5 }}>Can’t see your hand — keep it in view of the camera, palm toward it.</div>
           )}
           {settings.source === "pi" && piStatus === "online" && bandOnly && phase === "idle" && (
@@ -566,11 +664,28 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
               <b>Tracker not running.</b> In a terminal, run <span className="mono" style={{ color: "var(--cream)" }}>python tracker/server.py --serial &lt;PORT&gt; --device trainer</span> (or add <span className="mono">--simulate --task hold</span> to try it without the band). To use the built-in demo instead, open Settings and set Data source to Simulator.
             </div>
           )}
+          {camMode && camMessage && phase !== "calib" && (
+            <div role="status" style={{ padding: "12px 16px", borderRadius: 16, background: "var(--pill)", fontSize: 13.5, lineHeight: 1.5, color: ["denied", "nodevice", "error"].includes(camStatus) ? "var(--warn)" : "var(--cream)" }}>{camMessage}</div>
+          )}
+          {camMode && camStatus === "off" && phase === "idle" && (
+            <div role="status" style={{ padding: "12px 16px", borderRadius: 16, background: "var(--pill)", fontSize: 13.5, lineHeight: 1.5 }}>
+              <b>Webcam mode.</b> Press Start and your browser will ask to use the camera. Hand tracking runs in your browser and the video never leaves this computer. Your fingertip is estimated from your hand size, so keep your whole hand in view.
+            </div>
+          )}
           {error && phase !== "done" && (
             <div role="alert" style={{ padding: "10px 16px", borderRadius: 16, background: "var(--pill)", color: "var(--warn)", fontSize: 13.5 }}>{error}</div>
           )}
           <div style={{ position: "relative", borderRadius: 22, overflow: "hidden", background: "var(--canvas)" }}>
             <canvas ref={cv} style={{ display: "block", width: "100%", aspectRatio: "2/1" }} />
+            {camMode && (
+              <div style={{ position: "absolute", right: 12, bottom: 12, zIndex: 5, width: 168, aspectRatio: "4/3", borderRadius: 14, overflow: "hidden", background: "#111", boxShadow: "0 6px 18px rgba(0,0,0,.45)", display: camStatus === "ready" || camStatus === "loading" ? "block" : "none" }}>
+                <div style={{ position: "absolute", inset: 0, transform: "scaleX(-1)" }}>
+                  <video ref={camVideoRef} muted playsInline style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  <canvas ref={camOverlayRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />
+                </div>
+                <button onClick={() => camStop()} title="Turn the camera off" aria-label="Turn the camera off" style={{ position: "absolute", top: 6, right: 6, width: 24, height: 24, borderRadius: "50%", border: 0, cursor: "pointer", background: "rgba(24,24,22,.8)", color: "var(--cream)", fontSize: 14, lineHeight: 1 }}>×</button>
+              </div>
+            )}
             {hapticOn && phase === "run" && (
               <div className="mono" style={{ position: "absolute", top: 16, right: 16, height: 34, padding: "0 16px", borderRadius: 999, background: "var(--accent)", display: "flex", alignItems: "center", fontSize: 11.5, fontWeight: 600, letterSpacing: ".06em" }}>{hold ? "OVER THE LIMIT · VIBRATING" : "OFF PATH · VIBRATING"}</div>
             )}
@@ -583,7 +698,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
             {phase === "calib" && (
               <div style={{ position: "absolute", inset: 0, background: "rgba(24,24,22,.96)", display: "flex", flexWrap: "wrap", gap: "24px 36px", alignItems: "center", padding: "28px 32px", overflow: "auto" }}>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: "0 0 210px" }}>
-                  {CAL_LABELS.map((label, i) => {
+                  {calLabels.map((label, i) => {
                     const done = i < calStep, act = i === calStep;
                     return (
                       <div key={label} style={{ height: 44, padding: "0 16px 0 6px", borderRadius: 999, background: act ? "var(--pill)" : "transparent", display: "flex", alignItems: "center", gap: 12 }}>
@@ -596,10 +711,16 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
                 <div style={{ display: "flex", flexDirection: "column", gap: 14, flex: "1 1 260px", maxWidth: 420 }}>
                   <div className="head" style={{ fontSize: 30, lineHeight: 1.05 }}>{cal.title}</div>
                   <div style={{ fontSize: 14.5, lineHeight: 1.5, color: "rgba(166,202,200,.8)", textWrap: "pretty" }}>{cal.body}</div>
+                  {camMode && camMessage && calStep < 2 && (
+                    <div role="status" style={{ padding: "10px 14px", borderRadius: 14, background: "var(--pill)", fontSize: 13.5, lineHeight: 1.45, color: ["denied", "nodevice", "error"].includes(camStatus) ? "var(--warn)" : "var(--cream)" }}>{camMessage}</div>
+                  )}
+                  {camMode && calStep === 1 && camStatus === "ready" && !camHand && (
+                    <div role="status" style={{ fontSize: 13.5, color: "var(--warn)" }}>Can&apos;t see your hand yet. Raise it into the camera view, palm facing the camera.</div>
+                  )}
                   {calStep === 2 && (
                     <div style={{ display: "flex", alignItems: "baseline", gap: 14 }}>
                       <span className="head" style={{ fontSize: 80, lineHeight: 1 }}>{calCount}</span>
-                      <span className="mono muted" style={{ fontSize: 12 }}>noise σ {noise} g</span>
+                      <span className="mono muted" style={{ fontSize: 12 }}>noise σ {noise} {camMode ? "mm" : "g"}</span>
                     </div>
                   )}
                   {calStep === 3 && (
@@ -610,7 +731,10 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
                     </div>
                   )}
                   {"btn" in cal && cal.btn && (
-                    <button className="btn btn-cream" onClick={calNext} style={{ alignSelf: "flex-start", height: 48, padding: "0 24px", fontSize: 14 }}>{cal.btn}</button>
+                    <button className="btn btn-cream" onClick={calNext} disabled={calBlocked} style={{ opacity: calBlocked ? 0.45 : 1, cursor: calBlocked ? "not-allowed" : "pointer", alignSelf: "flex-start", height: 48, padding: "0 24px", fontSize: 14 }}>{cal.btn}</button>
+                  )}
+                  {camMode && calStep === 0 && ["denied", "error", "nodevice"].includes(camStatus) && (
+                    <button className="btn hov" onClick={() => void camStart()} style={{ alignSelf: "flex-start", height: 44, padding: "0 22px", fontSize: 14, fontWeight: 600, background: "var(--pill)" }}>Try again</button>
                   )}
                 </div>
               </div>
@@ -791,7 +915,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
                 Data source
                 <select value={settings.source} disabled={phase === "run"} onChange={(e) => setSettings((s) => ({ ...s, source: e.target.value as Settings["source"] }))}
                   style={{ height: 34, borderRadius: 999, border: 0, background: "var(--pill)", color: "var(--cream)", padding: "0 10px" }}>
-                  <option value="sim">Simulator</option><option value="pi">Tracker (Python)</option>
+                  <option value="pi">Tracker (Python)</option><option value="cam">Webcam (this computer)</option><option value="sim">Simulator</option>
                 </select>
               </label>
               {settings.source === "pi" && (

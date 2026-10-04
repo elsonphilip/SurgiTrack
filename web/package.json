@@ -10,9 +10,11 @@
     "seed:demo": "NODE_OPTIONS=--conditions=react-server tsx scripts/seed-demo.ts",
     "seed:clear": "NODE_OPTIONS=--conditions=react-server tsx scripts/seed-demo.ts clear",
     "check:paths": "tsx scripts/check-paths.ts",
-    "export:paths": "tsx scripts/export-paths.ts"
+    "export:paths": "tsx scripts/export-paths.ts",
+    "check:cam": "tsx scripts/check-cam.ts"
   },
   "dependencies": {
+    "@mediapipe/tasks-vision": "^1.0.1",
     "next": "16.3.8",
     "react": "19.2.8",
     "react-dom": "19.2.8",

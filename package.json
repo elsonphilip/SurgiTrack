@@ -16,6 +16,7 @@
     "export:paths": "npm --prefix web run export:paths",
     "postinstall": "node scripts/ensure-web-deps.mjs",
     "tracker:sim": "python3 tracker/server.py --simulate",
-    "tracker:test": "python3 -m pytest tracker -q"
+    "tracker:test": "python3 -m pytest tracker -q",
+    "check:cam": "npm --prefix web run check:cam"
   }
 }
