@@ -3,9 +3,16 @@ export const gradeWord = (score: number) => (score >= 85 ? "Excellent" : score >
 export const tremorWord = (t: number) => (t < 2 ? "Very steady" : t < 4 ? "Mild" : t < 6 ? "Noticeable" : "Strong");
 export const smoothWord = (v: number) => (v >= 80 ? "Smooth" : v >= 60 ? "A little jerky" : "Jerky");
 
-export function coachingTip(acc: number, trem: number, smooth: number) {
+export function coachingTip(acc: number, trem: number, smooth: number, hold = false) {
   const deficit = [100 - acc, trem * 10, 100 - smooth];
   const worst = deficit.indexOf(Math.max(...deficit));
+  if (hold) {
+    return [
+      "Biggest opportunity: staying under the tremor limit. Rest your forearm, relax your grip and breathe out slowly.",
+      "Biggest opportunity: tremor. Support your wrist, loosen your shoulder and let your fingertips go soft.",
+      "Biggest opportunity: steadiness. Your shake came in bursts, so find a calm rhythm and keep it the whole time.",
+    ][worst];
+  }
   return [
     "Biggest opportunity: staying inside the band. Slow down on the turns and keep your eyes on the next stretch of the line.",
     "Biggest opportunity: tremor. Rest your forearm on the pad, relax your grip, and breathe out slowly as you trace.",

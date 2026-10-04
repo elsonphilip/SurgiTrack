@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { LEVELS } from "@/lib/scoring";
+import { HOLD_LIMIT, LEVELS } from "@/lib/scoring";
 import { COMBO_MAX, COMBO_STEP_S, HIT_S } from "@/lib/game";
 import { coachingTip, gradeWord, smoothWord, tremorWord } from "@/lib/coach";
 import { defaultPath, getPath, pathsForLevel, samplePath, type PathDef } from "@/lib/paths";
@@ -63,7 +63,7 @@ interface Result {
 }
 export interface LastSession { acc: number; dev: number; trem: number; smooth: number }
 interface Settings { sessionLength: number; traceStyle: "heat" | "mono"; showTolerance: boolean; showCamera: boolean; pathId: string; source: "sim" | "pi"; piUrl: string }
-const DEFAULTS: Settings = { sessionLength: 12, traceStyle: "heat", showTolerance: true, showCamera: true, pathId: "", source: "sim", piUrl: "ws://localhost:8765" };
+const DEFAULTS: Settings = { sessionLength: 12, traceStyle: "heat", showTolerance: true, showCamera: true, pathId: "", source: "pi", piUrl: "ws://localhost:8765" };
 
 /** "" = the level's original design path, "shuffle" = random path from the level each run, else a path id. */
 function resolvePath(level: number, pathId: string, avoidId?: string): PathDef {
@@ -75,9 +75,12 @@ function resolvePath(level: number, pathId: string, avoidId?: string): PathDef {
   const p = pathId ? getPath(pathId) : undefined;
   return p && p.level === level ? p : defaultPath(level);
 }
-function cachePath(r: { settings: Settings; path: PathDef; pts: number[][]; decor: Decor[] }, level: number) {
+/** Steady-hold has no path: the "course" is a straight line and your tremor decides how far the trace wobbles off it. */
+const HOLD_X0 = 80, HOLD_X1 = 880;
+const holdLine = () => Array.from({ length: 320 }, (_, i) => [HOLD_X0 + ((HOLD_X1 - HOLD_X0) * i) / 319, H / 2]);
+function cachePath(r: { settings: Settings; path: PathDef; pts: number[][]; decor: Decor[]; task: string }, level: number) {
   r.path = resolvePath(level, r.settings.pathId, r.path.id);
-  r.pts = samplePath(r.path, 320);
+  r.pts = r.task === "hold" ? holdLine() : samplePath(r.path, 320);
   r.decor = makeDecor(level, r.pts, LEVELS[level - 1].toleranceMm * PX);
 }
 
@@ -144,6 +147,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
   const [piStatus, setPiStatus] = useState<"off" | "online" | "offline">("off");
   const [piSim, setPiSim] = useState(false);
   const [piCamera, setPiCamera] = useState(false);
+  const [task, setTaskS] = useState<"path" | "hold">("path");
   const [video, setVideo] = useState<string | null>(null);
   const [handLost, setHandLost] = useState(false);
   const [gameStats, setGameStats] = useState({ points: 0, best: 1, chain: 0, hull: 100, gates: 0 });
@@ -153,7 +157,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
   const R = useRef({
     phase: (autoStart ? "calib" : "idle") as Phase, level, calStep: 0, trace: [] as [number, number, boolean][], pts: [] as number[][], path: defaultPath(Math.min(Math.max(startLevel, 1), 5)),
     acc: { n: 0, in: 0, dev: 0, tr: 0, pulses: 0 }, wasOut: false, hapUntil: 0, t0: 0, m0: 0, lastUi: 0,
-    g: newGame(0), game: false, decor: [] as Decor[], hapKind: null as string | null, hx: [] as number[], hy: [] as number[], raw: [] as RawSample[], settings: DEFAULTS, mode: "sim" as "sim" | "pi", ws: null as WebSocket | null, cursor: null as [number, number] | null, ct: 0 as unknown as ReturnType<typeof setInterval>,
+    g: newGame(0), game: false, task: "path" as "path" | "hold", limit: 3, hpm: 0, hpv: 1e-6, decor: [] as Decor[], hapKind: null as string | null, hx: [] as number[], hy: [] as number[], raw: [] as RawSample[], settings: DEFAULTS, mode: "sim" as "sim" | "pi", ws: null as WebSocket | null, cursor: null as [number, number] | null, ct: 0 as unknown as ReturnType<typeof setInterval>,
   });
 
   const setPhase = (p: Phase) => {
@@ -271,6 +275,13 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
     if (startSignal !== firstSignal.current) { firstSignal.current = startSignal; startCalib(); }
   }, [startSignal, startCalib]);
 
+  const applyTask = (t: "path" | "hold") => {
+    const r = R.current;
+    if (r.task === t) return;
+    r.task = t; setTaskS(t);
+    cachePath(r, r.level); r.trace = []; setActivePath(r.path.id);
+  };
+
   // Python tracker data source: the tracker (tracker/server.py) streams frames + state over a WebSocket.
   useEffect(() => {
     const r = R.current;
@@ -280,10 +291,15 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
     const handle = (m: Record<string, any>) => { // eslint-disable-line @typescript-eslint/no-explicit-any
       if (m.type === "hello") {
         setPiStatus("online"); setPiSim(!!m.simulated); setPiCamera(!!m.camera);
+        applyTask(m.task === "hold" ? "hold" : "path");
         piSend(r, { cmd: "set", userId: profileId, level: r.level, pathId: r.path.id, sessionLength: r.settings.sessionLength, game: r.game });
       } else if (m.type === "state") {
+        if (m.task) applyTask(m.task === "hold" ? "hold" : "path");
+        r.limit = Number(m.tolerance) || r.limit;
         r.calStep = m.calStep; setCalStep(m.calStep); setCalCount(m.calCount); setNoise(Number(m.noise).toFixed(3));
-        if (m.phase !== r.phase) {
+        if (m.phase === "done" && r.phase !== "run") {
+          piSend(r, { cmd: "stop" }); // a finished session left over from before this page connected: start fresh instead of waiting for a result that already went out
+        } else if (m.phase !== r.phase) {
           if (m.phase === "run") { r.trace = []; r.g = newGame(performance.now()); setResult(null); setError(null); }
           if (m.phase === "idle") { r.trace = []; setLive(EMPTY); }
           if (m.phase === "done") setSaving(true);
@@ -291,7 +307,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
         }
         if (m.level !== r.level) { r.level = m.level; setLevelS(m.level); }
         const p = getPath(m.pathId);
-        if (p && p.id !== r.path.id) { r.path = p; r.pts = samplePath(p, 320); setActivePath(p.id); }
+        if (r.task !== "hold" && p && p.id !== r.path.id) { r.path = p; r.pts = samplePath(p, 320); setActivePath(p.id); }
       } else if (m.type === "frame") {
         setImu(m.imu); setSpec(m.spec);
         r.hx = [...r.hx, m.imu[0]].slice(-60); r.hy = [...r.hy, m.imu[1]].slice(-60);
@@ -303,7 +319,18 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
         setHandLost(!m.finger);
         if (m.phase === "run") {
           setLive({ acc: m.acc == null ? "--" : String(Math.round(m.acc)), dev: m.dev == null ? "--" : Number(m.dev).toFixed(1), trem: Number(m.trem).toFixed(1), smooth: String(m.smooth), time: Number(m.time).toFixed(1), pct: m.pct, pulses: m.pulses });
-          if (m.finger && r.trace.length < 5000) { r.trace.push([m.finger[0] * PX, m.finger[1] * PX, !!m.out]); const now = performance.now(), p = clamp((m.pct ?? 0) / 100, 0, 1);
+          if (r.task === "hold") {
+            // No path: the trace runs left to right over the hold, and its wobble follows the real tremor signal.
+            const p = clamp((m.pct ?? 0) / 100, 0, 1), now = performance.now(), ax = Number(m.imu[0]);
+            r.hpm += (ax - r.hpm) * 0.02;
+            const hp = ax - r.hpm;
+            r.hpv += (hp * hp - r.hpv) * 0.02;
+            const z = clamp(hp / Math.sqrt(Math.max(r.hpv, 1e-8)), -2.5, 2.5);
+            const tolPx = LEVELS[r.level - 1].toleranceMm * PX;
+            const amp = clamp(Number(m.trem) / (r.limit || 3), 0, 2.2) * tolPx * 0.55;
+            if (r.trace.length < 5000) r.trace.push([HOLD_X0 + p * (HOLD_X1 - HOLD_X0), H / 2 + z * amp, !!m.out]);
+            gameStep(r.g, !m.out, now, p);
+          } else if (m.finger && r.trace.length < 5000) { r.trace.push([m.finger[0] * PX, m.finger[1] * PX, !!m.out]); const now = performance.now(), p = clamp((m.pct ?? 0) / 100, 0, 1);
             gameStep(r.g, m.dev == null ? !m.out : Number(m.dev) <= LEVELS[r.level - 1].toleranceMm, now, p); }
         }
       } else if (m.type === "result") {
@@ -319,16 +346,23 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
       else if (m.type === "error") setError(m.message);
     };
     const connect = () => {
-      try { ws = new WebSocket(settings.piUrl); } catch { setPiStatus("offline"); return; }
-      r.ws = ws;
-      ws.onmessage = (ev) => { try { handle(JSON.parse(ev.data)); } catch {} };
-      ws.onclose = () => { r.ws = null; setPiStatus("offline"); if (!closed) retry = setTimeout(connect, 2000); };
-      ws.onerror = () => ws?.close();
+      let sock: WebSocket;
+      try { sock = new WebSocket(settings.piUrl); } catch { setPiStatus("offline"); return; }
+      ws = sock;
+      r.ws = sock;
+      sock.onmessage = (ev) => { try { handle(JSON.parse(ev.data)); } catch (e) { console.error("tracker message failed", e); } };
+      sock.onclose = () => {
+        // A socket that was already replaced (React strict mode connects twice in development) must not clear the live one.
+        if (r.ws === sock) { r.ws = null; setPiStatus("offline"); }
+        if (!closed && ws === sock) retry = setTimeout(connect, 2000);
+      };
+      sock.onerror = () => sock.close();
     };
     connect();
     return () => {
       closed = true; clearTimeout(retry); ws?.close();
       r.ws = null; r.mode = "sim"; r.phase = "idle"; r.trace = []; r.cursor = null;
+      r.task = "path"; setTaskS("path"); cachePath(r, r.level);
       setPiStatus("off"); setVideo(null); setHandLost(false); setPhaseS("idle"); setLive(EMPTY); setHapticOn(false); setHaptic(false);
     };
   }, [settings.source, settings.piUrl, profileId, router, setHaptic, setDist]);
@@ -441,6 +475,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
 
   // ---- derived UI ----
   const lv = LEVELS[level - 1];
+  const hold = task === "hold" && settings.source === "pi"; // steady-hold: wristband only, no camera or path
   const phaseLabel = { idle: "ready", calib: "calibrating", run: "recording", done: "complete" }[phase];
   const primaryLabel = (game ? { idle: "Launch", calib: "Cancel", run: "Abort", done: "Fly again" } : simple ? { idle: "Start practice", calib: "Cancel", run: "Stop", done: "Practice again" } : { idle: "Calibrate & start", calib: "Cancel", run: "Stop", done: "New session" })[phase];
   const steel = "#5AA4D6", bad = "#E3A857";
@@ -464,9 +499,9 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
         <h1 className="head" style={{ margin: 0, fontSize: "clamp(34px,4vw,52px)", lineHeight: 1, letterSpacing: "-.01em" }}>{game ? "Mission Control" : simple ? "Practice" : "Live Session"}</h1>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
           <button className="ctl" onClick={() => setLevel(level % (simple ? Math.max(1, startLevel) : 5) + 1)} disabled={phase === "run" || (simple && startLevel <= 1)} title={simple ? (startLevel <= 1 ? "Reach a score of 75 three times to unlock the next exercise" : "Switch exercise") : undefined}>
-            <span className="muted">{game ? "Mission:" : simple ? "Exercise:" : "Level:"}</span><b>{game ? `${level} · ${missionName(level)}` : simple ? `${lv.name} (level ${level})` : `L${level} ${lv.name}`}</b>{(!simple || startLevel > 1) && <span className="muted" style={{ fontSize: 11 }}>▾</span>}
+            <span className="muted">{game ? "Mission:" : hold ? "Level:" : simple ? "Exercise:" : "Level:"}</span><b>{game ? `${level} · ${missionName(level)}` : hold ? `Level ${level}` : simple ? `${lv.name} (level ${level})` : `L${level} ${lv.name}`}</b>{(!simple || startLevel > 1) && <span className="muted" style={{ fontSize: 11 }}>▾</span>}
           </button>
-          <div className="ctl" title={simple ? "How far you can drift from the line before the band buzzes" : undefined}><span className="muted">{game ? "Corridor:" : simple ? "Allowed wobble:" : "Tolerance:"}</span><b>±{lv.toleranceMm} mm</b></div>
+          <div className="ctl" title={simple ? "How far you can drift from the line before the band buzzes" : undefined}><span className="muted">{hold ? "Tremor limit:" : game ? "Corridor:" : simple ? "Allowed wobble:" : "Tolerance:"}</span><b>{hold ? `${HOLD_LIMIT[level]} / 10` : `±${lv.toleranceMm} mm`}</b></div>
           <button className="btn btn-accent" disabled={settings.source === "pi" && piStatus !== "online"} onClick={() => (phase === "idle" || phase === "done" ? startCalib() : cancel())}>{primaryLabel}</button>
         </div>
       </div>
@@ -475,13 +510,13 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
         <div className="card" style={{ flex: "2.4 1 560px", minWidth: 0, paddingBottom: 28, display: "flex", flexDirection: "column", gap: 18, ...(simple ? { maxWidth: 1040, width: "100%", margin: "0 auto" } : {}) }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
             <div style={{ display: "flex", alignItems: "baseline", gap: 14, flexWrap: "wrap" }}>
-              <span className="card-title">Path trace</span>
+              <span className="card-title">{task === "hold" && settings.source === "pi" ? "Steady hold" : "Path trace"}</span>
               <span className="mono muted" style={{ fontSize: 12 }}>{simple ? phaseLabel.charAt(0).toUpperCase() + phaseLabel.slice(1) : `${phaseLabel} · session #${nextId}`}{activePath !== defaultPath(level).id && ` · ${getPath(activePath)?.name ?? ""}`}</span>
             </div>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               {settings.source === "pi" ? (
                 <span className="chip" title={piStatus === "online" ? (piSim ? "Tracker is using its simulated rig" : "Live from the tracker") : "Tracker not reachable — start it with: python server.py (in the tracker folder)"} style={{ color: piStatus === "online" ? steel : "var(--warn)" }}>
-                  {piStatus === "online" ? (piSim ? "TRACKER · SIMULATED" : "TRACKER · LIVE") : "PI · OFFLINE"}
+                  {piStatus === "online" ? (piSim ? "TRACKER · SIMULATED" : "TRACKER · LIVE") : "TRACKER · OFFLINE"}
                 </span>
               ) : (
                 <span className="chip" title="No hardware connected — sensor data is generated in the browser" style={{ color: steel }}>SIMULATED</span>
@@ -500,7 +535,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
           )}
           {simple && phase === "idle" && (
             <ol style={{ display: "flex", flexWrap: "wrap", gap: 10, margin: 0, padding: 0, listStyle: "none", fontSize: 14 }}>
-              {["Put on the wristband", "Hold still for 5 seconds", "Trace the dashed line — stay inside the band"].map((t, i) => (
+              {["Put on the wristband", "Hold still for 5 seconds", hold ? "Hold your hand steady — the band buzzes if you shake" : "Trace the dashed line — stay inside the band"].map((t, i) => (
                 <li key={t} style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--pill)", borderRadius: 999, padding: "6px 16px 6px 6px" }}>
                   <span style={{ width: 28, height: 28, borderRadius: "50%", background: "var(--cream)", color: "var(--card)", display: "grid", placeItems: "center", fontWeight: 700, fontSize: 13 }}>{i + 1}</span>{t}
                 </li>
@@ -510,17 +545,22 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
           {settings.source === "pi" && piStatus === "online" && piCamera && handLost && phase !== "done" && (
             <div role="status" style={{ padding: "10px 16px", borderRadius: 16, background: "var(--pill)", color: "var(--warn)", fontSize: 13.5 }}>Can’t see your hand — keep it in view of the camera, palm toward it.</div>
           )}
+          {settings.source === "pi" && piStatus === "offline" && phase === "idle" && (
+            <div role="status" style={{ padding: "12px 16px", borderRadius: 16, background: "var(--pill)", fontSize: 13.5, lineHeight: 1.5 }}>
+              <b>Tracker not running.</b> In a terminal, run <span className="mono" style={{ color: "var(--cream)" }}>python tracker/server.py --serial &lt;PORT&gt; --device trainer</span> (or add <span className="mono">--simulate --task hold</span> to try it without the band). To use the built-in demo instead, open Settings and set Data source to Simulator.
+            </div>
+          )}
           {error && phase !== "done" && (
             <div role="alert" style={{ padding: "10px 16px", borderRadius: 16, background: "var(--pill)", color: "var(--warn)", fontSize: 13.5 }}>{error}</div>
           )}
           <div style={{ position: "relative", borderRadius: 22, overflow: "hidden", background: "var(--canvas)" }}>
             <canvas ref={cv} style={{ display: "block", width: "100%", aspectRatio: "2/1" }} />
             {hapticOn && phase === "run" && (
-              <div className="mono" style={{ position: "absolute", top: 16, right: 16, height: 34, padding: "0 16px", borderRadius: 999, background: "var(--accent)", display: "flex", alignItems: "center", fontSize: 11.5, fontWeight: 600, letterSpacing: ".06em" }}>OFF PATH · VIBRATING</div>
+              <div className="mono" style={{ position: "absolute", top: 16, right: 16, height: 34, padding: "0 16px", borderRadius: 999, background: "var(--accent)", display: "flex", alignItems: "center", fontSize: 11.5, fontWeight: 600, letterSpacing: ".06em" }}>{hold ? "OVER THE LIMIT · VIBRATING" : "OFF PATH · VIBRATING"}</div>
             )}
             {phase === "idle" && !simple && (
               <div style={{ position: "absolute", left: 16, bottom: 16, maxWidth: "min(380px,calc(100% - 32px))", padding: "14px 20px", borderRadius: 20, background: "rgba(33,33,31,.94)", display: "flex", flexDirection: "column", gap: 4 }}>
-                <div style={{ fontWeight: 700, fontSize: 15 }}>Trace the dashed path.</div>
+                <div style={{ fontWeight: 700, fontSize: 15 }}>{hold ? "Hold your hand steady." : "Trace the dashed path."}</div>
                 <div style={{ fontSize: 13, color: "rgba(166,202,200,.75)", lineHeight: 1.45, textWrap: "pretty" }}>Stay inside the blue band. Leaving it vibrates the wristband. Calibration runs first.</div>
               </div>
             )}
@@ -569,7 +609,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
                   </div>
                 )}
                 {result && game && (
-                  <GameResult level={level} hull={gameStats.hull} gates={gameStats.gates} metrics={{ accuracy: result.acc, smoothness: result.smooth, tremor: result.trem, completionTimeS: result.time }} chain={gameStats.chain} acc={result.acc} time={result.time} detail={simple ? undefined : [["Deviation", `${result.dev} mm`], ["Tremor", `${result.trem}/10`], ["Smoothness", String(result.smooth)], ["Haptic", `${result.pulses}×`]]} trainingScore={result.score} points={gameStats.points} bestCombo={gameStats.best} counted={result.counted} isBest={result.isBest} promoted={result.promoted} demo={result.demo} onAgain={startCalib} onProgress={() => router.push(`/p/${profileId}/progress`)} />
+                  <GameResult level={level} hull={gameStats.hull} gates={gameStats.gates} metrics={{ accuracy: result.acc, smoothness: result.smooth, tremor: result.trem, completionTimeS: result.time }} chain={gameStats.chain} acc={result.acc} time={result.time} detail={simple ? undefined : [...(hold ? [] : [["Deviation", `${result.dev} mm`]]), ["Tremor", `${result.trem}/10`], ["Smoothness", String(result.smooth)], ["Haptic", `${result.pulses}×`]]} trainingScore={result.score} points={gameStats.points} bestCombo={gameStats.best} counted={result.counted} isBest={result.isBest} promoted={result.promoted} demo={result.demo} onAgain={startCalib} onProgress={() => router.push(`/p/${profileId}/progress`)} />
                 )}
                 {result && !game && simple && (
                   <>
@@ -583,7 +623,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 12, flex: "1 1 300px", maxWidth: 520 }}>
                       {[
-                        ["Stayed on the path", `${result.acc}%`, `You were within ${lv.toleranceMm} mm of the line ${result.acc}% of the time.`],
+                        hold ? ["Stayed steady", `${result.acc}%`, `Your tremor stayed under the limit ${result.acc}% of the time.`] : ["Stayed on the path", `${result.acc}%`, `You were within ${lv.toleranceMm} mm of the line ${result.acc}% of the time.`],
                         ["Hand tremor", tremorWord(result.trem), `${result.trem} out of 10 — lower is better.`],
                         ["Smoothness", smoothWord(result.smooth), `${result.smooth} out of 100 — higher is smoother.`],
                       ].map(([k, v, d]) => (
@@ -592,7 +632,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
                           <div className="head" style={{ fontSize: 20, whiteSpace: "nowrap" }}>{v}</div>
                         </div>
                       ))}
-                      <div style={{ fontSize: 14, lineHeight: 1.45 }}>{coachingTip(result.acc, result.trem, result.smooth)}</div>
+                      <div style={{ fontSize: 14, lineHeight: 1.45 }}>{coachingTip(result.acc, result.trem, result.smooth, hold)}</div>
                       {result.screening && (
                         <div style={{ fontSize: 12.5, color: "rgba(166,202,200,.75)" }}>Tremor screening signal: <b style={{ color: "var(--cream)" }}>{Math.round(result.screening.tremorProbability * 100)}%</b> — not a diagnosis.</div>
                       )}
@@ -615,7 +655,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 14, flex: "1 1 280px" }}>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                        {[["Accuracy", `${result.acc}%`], ["Deviation", `${result.dev} mm`], ["Tremor", `${result.trem}/10`], ["Smoothness", String(result.smooth)], ["Time", `${result.time} s`], ["Haptic", `${result.pulses}×`]].map(([k, v], i) => (
+                        {[["Accuracy", `${result.acc}%`], ...(hold ? [] : [["Deviation", `${result.dev} mm`]]), ["Tremor", `${result.trem}/10`], ["Smoothness", String(result.smooth)], ["Time", `${result.time} s`], ["Haptic", `${result.pulses}×`]].map(([k, v], i) => (
                           <span key={k} style={{ height: 40, padding: "0 6px 0 16px", borderRadius: 999, background: "var(--pill)", display: "flex", alignItems: "center", gap: 10, fontSize: 13 }}>
                             <span className="muted">{k}</span>
                             <span className="mono" style={{ height: 30, padding: "0 12px", borderRadius: 999, background: i % 2 ? steel : "var(--cream)", color: "var(--card)", display: "flex", alignItems: "center", fontSize: 12, fontWeight: 600 }}>{v}</span>
@@ -645,17 +685,17 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
           </div>
           {simple && (
             <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
-              <Tile label="On the line" value={live.acc === "--" ? "—" : `${live.acc}%`} sub="of the time inside the band" />
+              <Tile label={hold ? "Under the limit" : "On the line"} value={live.acc === "--" ? "—" : `${live.acc}%`} sub={hold ? "of the time your tremor stayed low" : "of the time inside the band"} />
               <Tile label="Hand tremor" value={live.trem === "--" ? "—" : tremorWord(Number(live.trem))} sub={live.trem === "--" ? "lower is better" : `${live.trem} / 10`} />
-              <Tile label="Smoothness" value={live.smooth === "--" ? "—" : smoothWord(Number(live.smooth))} sub={live.smooth === "--" ? "steady, controlled motion" : `${live.smooth} / 100`} />
-              <Tile label="Buzzes" value={String(live.pulses)} sub="times you left the band" />
+              <Tile label={hold ? "Steadiness" : "Smoothness"} value={live.smooth === "--" ? "—" : smoothWord(Number(live.smooth))} sub={live.smooth === "--" ? "steady, controlled motion" : `${live.smooth} / 100`} />
+              <Tile label="Buzzes" value={String(live.pulses)} sub={hold ? "times your tremor went over the limit" : "times you left the band"} />
             </div>
           )}
         </div>
 
         {!simple && (
         <div style={{ flex: "1 1 280px", minWidth: 0, display: "flex", flexDirection: "column", gap: 22 }}>
-          {settings.showCamera && (
+          {settings.showCamera && !hold && (
             <div className="card" style={{ padding: "24px 26px", display: "flex", flexDirection: "column", gap: 14 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <span className="card-title sm">Camera</span>
@@ -688,7 +728,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
           <CardHead title="Precision" />
           <div style={{ display: "flex", gap: 36, flexWrap: "wrap" }}>
             <Stat value={`${live.acc}%`} label="Accuracy" trend={trend(live.acc, last?.acc, true)} />
-            <Stat value={live.dev} label="Deviation, mm" trend={trend(live.dev, last?.dev, false)} />
+            {hold ? <Stat value={live.trem} label="Tremor now, /10" trend={trend(live.trem, last?.trem, false)} /> : <Stat value={live.dev} label="Deviation, mm" trend={trend(live.dev, last?.dev, false)} />}
           </div>
           <BleedLines lines={[{ path: line(hx, 300, 80, -0.09, 0.09), color: "#3D8571" }, { path: line(hy, 300, 80, -0.09, 0.09), color: "#5AA4D6" }]} />
         </div>

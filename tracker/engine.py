@@ -23,6 +23,10 @@ HAPTIC_MIN_GAP_S = 0.25
 WARN_DRIFT, MAJOR_DRIFT = 0.75, 2.0
 TICK_GAP_S, BURST_GAP_S = 0.5, 0.12
 SECTIONS = 4  # a clean quarter of the path earns a success pulse
+# Steady-hold task (IMU only, no camera): the tremor index (0-10) must stay under a limit that tightens with level.
+HOLD_LIMIT = {1: 4.0, 2: 3.5, 3: 3.0, 4: 2.5, 5: 2.0}
+HOLD_STEP_S = 0.1      # re-evaluate the live tremor 10 times a second
+HOLD_WARMUP_S = 1.0    # no counting or buzzing in the first second (the filters need to settle)
 RAW_CAP = 20000
 
 
@@ -56,6 +60,7 @@ class SessionEngine:
         # Game mode: tiered haptics (tick / buzz / burst / success). haptic_fx(kind) plays the matching effect.
         self.haptic_fx = haptic_fx or (lambda kind: None)
         self.tiered = False
+        self.task = "path"  # "path" = trace a path with the camera, "hold" = hold the hand steady (IMU only)
         self.screener = screener
         self.level, self.path_id, self.length_s = 1, "l1-straight", 12.0
         self.phase, self.cal_step, self.cal_count = "idle", 0, 5
@@ -67,7 +72,7 @@ class SessionEngine:
         self._reset_run()
 
     # ---------- configuration / commands ----------
-    def configure(self, level=None, path_id=None, length_s=None, tiered=None):
+    def configure(self, level=None, path_id=None, length_s=None, tiered=None, task=None):
         with self.lock:
             if self.phase == "run":
                 raise EngineError("Can't change settings during a run")
@@ -89,6 +94,10 @@ class SessionEngine:
                 self.length_s = float(length_s)
             if tiered is not None:
                 self.tiered = bool(tiered)
+            if task is not None:
+                if task not in ("path", "hold"):
+                    raise EngineError("task must be path or hold")
+                self.task = task
             self.version += 1
 
     def begin_calibration(self):
@@ -127,7 +136,8 @@ class SessionEngine:
 
     # ---------- queries ----------
     def tolerance(self):
-        return LEVEL_TOL[self.level]
+        """Path task: allowed deviation in mm. Hold task: the tremor-index limit."""
+        return HOLD_LIMIT[self.level] if self.task == "hold" else LEVEL_TOL[self.level]
 
     def target_mm(self):
         with self.lock:
@@ -136,7 +146,7 @@ class SessionEngine:
     def state(self):
         with self.lock:
             return {"phase": self.phase, "calStep": self.cal_step, "calCount": self.cal_count, "level": self.level,
-                    "pathId": self.path_id, "sessionLength": self.length_s, "tolerance": self.tolerance(),
+                    "pathId": self.path_id, "sessionLength": self.length_s, "tolerance": self.tolerance(), "task": self.task,
                     "noise": round(self.sigma_base, 4), "baseline": self.baseline}
 
     def live(self, s: Sample):
@@ -184,6 +194,7 @@ class SessionEngine:
         self._sec = 0
         self._sec_n = self._sec_out = 0
         self.success_pulses = 0
+        self._last_hold, self._hold_series = -1e9, []
         self._accel, self._raw = [], []
         self._ft, self._fx = [], []
         self._last_screen = 0.0
@@ -258,7 +269,24 @@ class SessionEngine:
                               "gx": s.imu[3], "gy": s.imu[4], "gz": s.imu[5],
                               **({"camX": round(s.finger_mm[0], 3), "camY": round(s.finger_mm[1], 3)} if s.finger_mm else {}),
                               **({"distCm": s.dist_cm} if s.dist_cm is not None else {})})
-        if s.finger_new and s.finger_mm is not None:
+        if self.task == "hold":
+            if el >= HOLD_WARMUP_S and s.t - self._last_hold >= HOLD_STEP_S:
+                self._last_hold = s.t
+                trem, limit = float(self._live_tremor()), self.tolerance()
+                out = trem > limit
+                self._n += 1
+                self._in += not out
+                self._dev_now, self._dev_sum = trem, self._dev_sum + trem
+                self._hold_series.append(trem)
+                if out and not self._out:
+                    self._pulses += 1
+                if self.tiered:
+                    self._tiered_haptics(s.t, trem, out, el)
+                elif out and s.t - self._last_buzz >= HAPTIC_MIN_GAP_S:
+                    self._last_buzz, self._haptic_until = s.t, s.t + HAPTIC_MIN_GAP_S
+                    self.haptic()
+                self._out = out
+        elif s.finger_new and s.finger_mm is not None:
             d = float(deviation_mm(s.finger_mm, self.path_id)[0])
             self._dev_now, self._dev_sum, self._n = d, self._dev_sum + d, self._n + 1
             out = d > self.tolerance()
@@ -297,6 +325,8 @@ class SessionEngine:
         return sp, fs
 
     def _live_smooth(self):
+        if self.task == "hold":  # steadiness of the tremor level over the hold (see _finish)
+            return float(min(100, max(0, 100 - 25 * np.std(self._hold_series)))) if len(self._hold_series) >= 3 else 0.0
         sp, fs = self._speed()
         return T.smoothness(sp, fs) if len(sp) else 0.0
 
@@ -309,9 +339,29 @@ class SessionEngine:
         if self._n == 0:
             self.phase = "idle"
             self.version += 1
+            if self.task == "hold":
+                return ("error", "No wristband data during the run — check the USB connection and try again.")
             return ("error", "No hand was tracked during the run — check the camera view and try again.")
         sp, fs = self._speed()
         clip = lambda v, lo, hi: float(min(hi, max(lo, v)))  # noqa: E731
+        if self.task == "hold":
+            # Accuracy = % of the hold spent under the tremor limit. "Smoothness" = how steady the tremor level stayed
+            # (spikes lower it). There is no path, so no deviation in mm. Constants are placeholders like the rest.
+            series = np.array(self._hold_series)
+            metrics = {
+                "accuracy": round(clip(100 * self._in / self._n, 0, 100), 1),
+                "avgDeviationMm": 0.0,
+                "tremor": round(clip(T.tremor_index(np.array(self._accel), self.fs, self.sigma_base), 0, 10), 1),
+                "smoothness": round(clip(100 - 25 * float(series.std()), 0, 100)),
+                "completionTimeS": round(el, 1),
+                "hapticPulses": self._pulses,
+            }
+            result = {"level": self.level, "pathId": "hold", "task": "hold", "metrics": metrics, "baseline": self.baseline, "raw": self._raw}
+            if self._screen:
+                result["screening"] = {"tremorProbability": round(float(np.mean(self._screen)), 3), "windows": len(self._screen)}
+            self.phase = "done"
+            self.version += 1
+            return ("done", result)
         metrics = {
             "accuracy": round(clip(100 * self._in / self._n, 0, 100), 1),
             "avgDeviationMm": round(self._dev_sum / self._n, 2),
@@ -320,7 +370,7 @@ class SessionEngine:
             "completionTimeS": round(el, 1),
             "hapticPulses": self._pulses,
         }
-        result = {"level": self.level, "pathId": self.path_id, "metrics": metrics, "baseline": self.baseline, "raw": self._raw}
+        result = {"level": self.level, "pathId": self.path_id, "task": "path", "metrics": metrics, "baseline": self.baseline, "raw": self._raw}
         if self._screen:
             result["screening"] = {"tremorProbability": round(float(np.mean(self._screen)), 3), "windows": len(self._screen)}
         self.phase = "done"

@@ -15,6 +15,8 @@ export const LEVELS = [
 ] as const;
 
 export const MAX_LEVEL = LEVELS.length;
+/** Steady-hold task (wristband only): the tremor index (0-10) must stay under this limit. Mirrors HOLD_LIMIT in tracker/engine.py. */
+export const HOLD_LIMIT: Record<number, number> = { 1: 4, 2: 3.5, 3: 3, 4: 2.5, 5: 2 };
 /** Score needed on level N (index N) to count toward unlocking N+1. */
 export const UNLOCK_SCORE: Record<number, number> = { 1: 75, 2: 78, 3: 80, 4: 85 };
 export const UNLOCK_COUNT = 3;
@@ -31,12 +33,13 @@ export function timeScore(completionTimeS: number, level: number): number {
 }
 
 /** SCORE = .40·ACC + .25·SM + .20·(100 − 10·TRM) + .15·TIME */
-export function computeScore(m: SessionMetrics, level: number): number {
+export function computeScore(m: SessionMetrics, level: number, task: "path" | "hold" = "path"): number {
   return Math.round(
     WEIGHTS.accuracy * clamp(m.accuracy) +
       WEIGHTS.smoothness * clamp(m.smoothness) +
       WEIGHTS.steadiness * clamp(100 - m.tremor * 10) +
-      WEIGHTS.time * timeScore(m.completionTimeS, level),
+      // a hold lasts exactly as long as the session length, so finishing it earns the full time component
+      WEIGHTS.time * (task === "hold" ? 100 : timeScore(m.completionTimeS, level)),
   );
 }
 

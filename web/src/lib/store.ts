@@ -116,6 +116,7 @@ export interface NewSession {
   source: DataSource;
   baseline?: Baseline;
   pathId?: string;
+  task?: "path" | "hold";
   screening?: { tremorProbability: number; windows: number };
   raw?: RawSample[];
 }
@@ -138,12 +139,13 @@ export async function addSession(input: NewSession) {
       date: input.date ?? new Date().toISOString(),
       level: input.level,
       ...input.metrics,
-      score: computeScore(input.metrics, input.level),
+      score: computeScore(input.metrics, input.level, input.task === "hold" ? "hold" : "path"),
       source: input.source,
       hasRaw: !!input.raw?.length,
       samples: input.raw?.length ?? 0,
       baseline: input.baseline,
-      pathId: input.pathId && getPath(input.pathId)?.level === input.level ? input.pathId : undefined,
+      task: input.task === "hold" ? "hold" : undefined,
+      pathId: input.task !== "hold" && input.pathId && getPath(input.pathId)?.level === input.level ? input.pathId : undefined,
       screening: input.screening,
     };
     db.sessions.push(session);

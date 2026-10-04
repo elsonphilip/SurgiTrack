@@ -74,7 +74,7 @@ export default async function Sessions({ params }: PageProps<"/p/[id]/sessions">
                 <span>{s.accuracy.toFixed(1)}%</span>
                 <span>{s.tremor.toFixed(1)}</span>
                 <span>{Math.round(s.smoothness)}</span>
-                <span>{s.avgDeviationMm.toFixed(2)} mm</span>
+                <span>{s.task === "hold" ? "hold" : `${s.avgDeviationMm.toFixed(2)} mm`}</span>
                 {s.hasRaw ? (
                   <a href={`/api/sessions/${s.id}/csv`} download className="csv-chip" style={{ justifySelf: "end", height: 38, padding: "0 16px", borderRadius: 999, background: "var(--card)", display: "flex", alignItems: "center", fontSize: 11.5, color: "var(--steel)" }}>
                     {s.samples.toLocaleString()} · csv

@@ -21,14 +21,24 @@ python3 tracker/collect.py --port /dev/cu.usbmodem1101 --check
 ```
 You want `✓ stream looks healthy` (≈200 Hz, no gaps, gravity ≈ 1 g). If it complains, fix that first — bad recordings poison training.
 
-### Using your own sketch (7-field stream with millis())
-`collect.py` reads lines of `time,ax,ay,az,gx,gy,gz` (an 8th distance column is ignored). If your sketch prints `millis()`
-instead of `micros()`, or uses a different baud rate, say so:
+### Using the trainer sketch (`firmware/surgitrack_trainer`)
+The repo includes the standalone **Surgical Tremor Trainer** sketch (BMI270 + DRV2605L, LED bar). Set `FOR_PI = true` (already
+the default in the repo copy) and it streams `millis,ax,ay,az,gx,gy,gz` at 115200 baud. Tell the tools about it:
 ```
 python tracker/collect.py --port /dev/cu.usbmodem1101 --check --baud 115200 --time-unit ms
 ```
-Prefer `micros()` and 460800 baud when you can: millisecond timestamps are coarse at 200 Hz, and 115200 baud leaves very
-little headroom for 200 lines per second.
+Any sketch that prints `time,ax,ay,az,gx,gy,gz` works: use `--time-unit us` for `micros()` and `--baud` for its speed.
+Prefer `micros()` and 460800 baud when you can: millisecond timestamps are coarse at 200 Hz, and 115200 baud leaves little
+headroom for 200 lines per second.
+
+### Running the website with the trainer sketch (no camera)
+```
+python tracker/server.py --serial /dev/cu.usbmodem1101 --device trainer
+```
+Then open the site → Live → it connects on its own (chip says **TRACKER · LIVE**). With no camera the session is a
+**steady hold**: the band measures your tremor, buzzes when it goes over the limit for your level (`B`; the sketch's
+double click `D` is the "perfect section" pulse in Game mode), and the site scores accuracy (time under the limit),
+tremor, steadiness and the usual overall score. Try it without the band: `python tracker/server.py --simulate --task hold --skill 0.85`.
 
 ## 3. Record participants (about 4 minutes each)
 ```

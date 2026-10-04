@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * tracker → site. Body:
- * { userId, level, metrics:{accuracy,avgDeviationMm,tremor(0-10),smoothness,completionTimeS,hapticPulses},
+ * { userId, level, task?:"path"|"hold", metrics:{accuracy,avgDeviationMm,tremor(0-10),smoothness,completionTimeS,hapticPulses},
  *   baseline?:{pitch,roll,noiseSigma}, pathId?, screening?:{tremorProbability,windows}, simulated?, date?, raw? }
  * Stored as source:"device" — unless `simulated: true` (the tracker's --simulate mode), which stores it as
  * source:"synthetic" (DEMO data that never counts toward real profiles). If SURGITRACK_API_KEY is set, send it as
@@ -30,6 +30,7 @@ export async function POST(request: Request) {
       userId: b.userId,
       level: Number(b.level),
       pathId: typeof b.pathId === "string" ? b.pathId : undefined,
+      task: b.task === "hold" ? "hold" : "path",
       metrics: b.metrics,
       date: typeof b.date === "string" && !Number.isNaN(Date.parse(b.date)) ? new Date(b.date).toISOString() : undefined,
       source: b.simulated === true ? "synthetic" : "device",

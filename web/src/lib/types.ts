@@ -42,6 +42,8 @@ export interface Session extends SessionMetrics {
   hasRaw: boolean;
   samples: number;
   baseline?: Baseline;
+  /** "hold" = steady-hold session (wristband only, no camera or path); otherwise a path trace. */
+  task?: "path" | "hold";
   /** Target path used (see lib/paths.ts). */
   pathId?: string;
   /** LightGBM tremor screening over the session (a screening signal, not a diagnosis). */

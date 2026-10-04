@@ -20,6 +20,14 @@ feedback back to the user (DRV2605L). A camera + MediaPipe Hands tracks path; th
 cd pi && pip install -r requirements.txt && pytest
 python recorder.py --port /dev/ttyACM0 --user u01 --task steady_hold --label steady --seconds 30
 ```
+## Wristband only (no camera): steady-hold sessions
+
+With just the BMI270 + DRV2605L wristband (`firmware/surgitrack_trainer`), run
+`python tracker/server.py --serial <PORT> --device trainer`. The Live page connects to it and sessions become **steady
+holds**: keep your tremor under the limit for your level while the band buzzes when you go over. Accuracy = % of the hold
+under the limit; tremor and steadiness come from the IMU; there is no path or deviation. The limits are placeholders until
+real recordings exist (`tracker/engine.py: HOLD_LIMIT`). A camera adds path tracing later (`--camera 0`).
+
 ## Two separate switches: Mode and Display
 
 - **Mode: Standard | Game** (top bar). Game is a space-navigation mission: your fingertip (or stylus) flies a cute rocket

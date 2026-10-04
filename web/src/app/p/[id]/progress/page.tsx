@@ -125,6 +125,8 @@ export default async function Progress({ params }: PageProps<"/p/[id]/progress">
   });
   const f1 = (n: number) => n.toFixed(1);
   const steel = "#5AA4D6";
+  const hold = last.task === "hold"; // steady-hold sessions have no path, so "deviation" becomes the tremor index
+  const dv = (s: (typeof ss)[number]) => (hold ? s.tremor : s.avgDeviationMm);
 
   return (
     <>
@@ -135,9 +137,9 @@ export default async function Progress({ params }: PageProps<"/p/[id]/progress">
           <CardHead title="Precision" />
           <div style={{ display: "flex", gap: 36, flexWrap: "wrap" }}>
             <Stat value={`${f1(last.accuracy)}%`} label="Accuracy" trend={{ text: `${last.accuracy >= first.accuracy ? "▲" : "▼"} ${f1(Math.abs(last.accuracy - first.accuracy))}`, color: last.accuracy >= first.accuracy ? steel : "#E3A857" }} />
-            <Stat value={last.avgDeviationMm.toFixed(2)} label="Avg deviation, mm" trend={{ text: `${last.avgDeviationMm <= first.avgDeviationMm ? "▼" : "▲"} ${Math.abs(last.avgDeviationMm - first.avgDeviationMm).toFixed(2)}`, color: last.avgDeviationMm <= first.avgDeviationMm ? steel : "#E3A857" }} />
+            <Stat value={dv(last).toFixed(2)} label={hold ? "Tremor, /10" : "Avg deviation, mm"} trend={{ text: `${dv(last) <= dv(first) ? "▼" : "▲"} ${Math.abs(dv(last) - dv(first)).toFixed(2)}`, color: dv(last) <= dv(first) ? steel : "#E3A857" }} />
           </div>
-          <BleedLines lines={[{ path: svgLine(ss.map((s) => s.accuracy), 300, 80), color: "#5AA4D6" }, { path: svgLine(ss.map((s) => s.avgDeviationMm), 300, 80), color: "#3D8571" }]} />
+          <BleedLines lines={[{ path: svgLine(ss.map((s) => s.accuracy), 300, 80), color: "#5AA4D6" }, { path: svgLine(ss.map(dv), 300, 80), color: "#3D8571" }]} />
         </div>
 
         <div className="card" style={{ flex: "1 1 300px", minWidth: 0, paddingBottom: 0, display: "flex", flexDirection: "column", gap: 18, overflow: "hidden" }}>

@@ -25,9 +25,10 @@ FRAME_HZ = 30.0
 
 
 class Runner:
-    def __init__(self, rig, simulated, site, api_key=None, fs=100.0, screener=None):
+    def __init__(self, rig, simulated, site, api_key=None, fs=100.0, screener=None, task="path"):
         self.rig, self.simulated, self.site, self.api_key = rig, simulated, site, api_key
         self.engine = SessionEngine(fs=fs, haptic=rig.buzz, screener=screener, haptic_fx=rig.play)
+        self.engine.task = task
         self.clients, self.user_id, self.loop = set(), None, None
         self._stop = threading.Event()
         self._seen_version = -1
@@ -77,7 +78,7 @@ class Runner:
 
     def _finish(self, result):
         m = result["metrics"]
-        body = {"userId": self.user_id, "level": result["level"], "pathId": result["pathId"], "metrics": m,
+        body = {"userId": self.user_id, "level": result["level"], "pathId": result["pathId"], "task": result.get("task", "path"), "metrics": m,
                 "baseline": result["baseline"], "raw": result["raw"], "simulated": self.simulated}
         if "screening" in result:
             body["screening"] = result["screening"]
@@ -96,7 +97,7 @@ class Runner:
     # ----- websocket side -----
     async def handler(self, ws):
         self.clients.add(ws)
-        await ws.send(json.dumps({"type": "hello", "version": 1, "simulated": self.simulated, "camera": bool(getattr(self.rig, "has_camera", False)), "paths": sorted(load_paths())}))
+        await ws.send(json.dumps({"type": "hello", "version": 1, "simulated": self.simulated, "camera": bool(getattr(self.rig, "has_camera", False)), "task": self.engine.task, "paths": sorted(load_paths())}))
         await ws.send(json.dumps({"type": "state", **self.engine.state()}))
         try:
             async for raw in ws:
@@ -148,6 +149,12 @@ def main():
     ap.add_argument("--skill", type=float, default=0.6, help="simulated steadiness 0 (shaky) – 1 (steady)")
     ap.add_argument("--speed", type=float, default=1.0, help="simulation speed multiplier")
     ap.add_argument("--serial", help="Arduino serial port, e.g. /dev/ttyACM0")
+    ap.add_argument("--device", choices=["repo", "trainer"], default="repo",
+                    help="repo = firmware/surgitrack_imu (460800 baud, micros, H<n> haptics); trainer = firmware/surgitrack_trainer (115200 baud, millis, B/D haptics)")
+    ap.add_argument("--baud", type=int, default=None, help="serial speed (default depends on --device)")
+    ap.add_argument("--time-unit", choices=["us", "ms"], default=None, help="unit of the first serial column (default depends on --device)")
+    ap.add_argument("--task", choices=["auto", "path", "hold"], default="auto",
+                    help="path = trace a path (needs a camera), hold = hold steady (IMU only). auto = hold for a wristband with no camera")
     ap.add_argument("--camera", default=None, help="camera for MediaPipe fingertip tracking: 0 = laptop webcam, or a video file")
     ap.add_argument("--camera-mode", choices=["overhead", "webcam"], default="overhead",
                     help="overhead = Pi camera looking down (height from the distance sensor); webcam = laptop camera facing you (hand-size ruler)")
@@ -178,12 +185,16 @@ def main():
     elif a.serial:
         from rig import HardwareRig
 
-        rig, simulated = HardwareRig(a.serial, tracker, mapper), False
+        trainer = a.device == "trainer"
+        rig, simulated = HardwareRig(a.serial, tracker, mapper, baud=a.baud or (115200 if trainer else 460800),
+                                     time_unit=a.time_unit or ("ms" if trainer else "us"), protocol=a.device), False
     else:
         ap.error("choose --simulate or --serial PORT")
     screener = load_screener()
     print("Tremor model:", "loaded (screening on)" if screener else "none yet (train.py) — screening off")
-    runner = Runner(rig, simulated, a.site, a.api_key, screener=screener)
+    task = a.task if a.task != "auto" else ("hold" if (not simulated and tracker is None) else "path")
+    print("Task:", "steady hold (IMU only, tremor + haptics)" if task == "hold" else "trace a path (camera)")
+    runner = Runner(rig, simulated, a.site, a.api_key, screener=screener, task=task)
     try:
         asyncio.run(runner.serve(a.host, a.port))
     except KeyboardInterrupt:

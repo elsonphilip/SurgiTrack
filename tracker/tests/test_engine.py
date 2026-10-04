@@ -187,3 +187,45 @@ def test_standard_mode_is_untouched():
     fx = []
     run_session(0.3, fx=fx)
     assert fx == []  # tiers only fire when the site asks for game mode
+
+
+def run_hold(skill, level=2, tiered=False, fx=None, seed=3, length=12.0):
+    rig = SimulatedRig(realtime=False, skill=skill, seed=seed)
+    buzzes = []
+    e = SessionEngine(fs=100.0, haptic=lambda: buzzes.append(1), haptic_fx=(fx.append if fx is not None else None))
+    e.configure(level=level, length_s=length, task="hold", tiered=tiered)
+    e.begin_calibration(); e.calib_next(); e.calib_next()
+    while e.phase == "calib" and e.cal_step == 2:
+        e.feed(rig.read(e.target_mm(), False))
+    e.calib_next()
+    events = []
+    while e.phase == "run":
+        events += e.feed(rig.read(e.target_mm(), True))
+    return e, events, buzzes
+
+
+def test_hold_task_needs_no_camera_and_scores_steadiness():
+    e, ev, buzz_s = run_hold(0.95)
+    kind, r = ev[0]
+    assert kind == "done" and r["task"] == "hold" and r["pathId"] == "hold"
+    m = r["metrics"]
+    assert m["avgDeviationMm"] == 0.0 and 0 <= m["accuracy"] <= 100 and 0 <= m["smoothness"] <= 100
+    _, ev2, buzz_u = run_hold(0.05)
+    shaky = ev2[0][1]["metrics"]
+    assert shaky["tremor"] > m["tremor"] and shaky["accuracy"] < m["accuracy"]
+    assert len(buzz_u) > len(buzz_s)  # the band buzzes when the hand shakes over the limit
+
+
+def test_hold_task_tiered_haptics_and_state():
+    fx = []
+    e, ev, _ = run_hold(0.2, tiered=True, fx=fx)
+    assert e.state()["task"] == "hold" and fx
+    assert ev[0][1]["metrics"]["avgDeviationMm"] == 0.0
+
+
+def test_hold_limits_tighten_with_level():
+    from engine import HOLD_LIMIT
+    vals = [HOLD_LIMIT[l] for l in range(1, 6)]
+    assert vals == sorted(vals, reverse=True)
+    with pytest.raises(EngineError):
+        SessionEngine().configure(task="nonsense")

@@ -90,3 +90,20 @@ def test_full_session_over_websocket(tmp_path):
     assert body["metrics"]["completionTimeS"] == 5.0 and len(body["raw"]) > 300 and "baseline" in body
     assert result["uploaded"] is True and result["session"]["score"] == 77 and result["simulated"] is True
     assert "level" in err["message"]
+
+
+def test_trainer_sketch_protocol():
+    """The standalone sketch: millis() timestamps, 7 fields, B / D buzz commands."""
+    import time
+    from rig import HardwareRig, parse_line
+
+    assert parse_line("1000,0.01,0.02,1.0,1,2,3", "ms")[0] == 1_000_000
+    assert parse_line("1000,0.01,0.02,1.0,1,2,3")[0] == 1000
+    assert parse_line("tremor:0.0100 limit:0.0100", "ms") is None  # the sketch's plotter mode is ignored
+    rig = HardwareRig("loop://", baud=115200, time_unit="ms", protocol="trainer")
+    sent = []
+    rig.ser.write = sent.append
+    rig.buzz(); rig.play("tick"); rig.play("burst"); rig.play("success")
+    assert sent == [b"B\n", b"B\n", b"B\n", b"D\n"]
+    rig.ser.write = lambda b: None
+    rig.close()

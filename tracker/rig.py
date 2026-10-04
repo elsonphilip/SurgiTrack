@@ -122,15 +122,15 @@ class SimulatedRig:
         return Sample(t, imu, self._finger, new, 14.2 + float(rng.normal(0, 0.15)))
 
 
-def parse_line(line):
-    """'t_us,ax,ay,az,gx,gy,gz[,dist_cm]' → (t_us, imu6, dist or None); None if malformed."""
+def parse_line(line, time_unit="us"):
+    """'t,ax,ay,az,gx,gy,gz[,dist_cm]' → (t_us, imu6, dist or None); None if malformed. time_unit: "us" or "ms"."""
     if not line or line.startswith("#"):
         return None
     p = line.strip().split(",")
     if len(p) < 7:
         return None
     try:
-        t_us = int(p[0])
+        t_us = int(p[0]) * (1000 if time_unit == "ms" else 1)
         imu = tuple(float(v) for v in p[1:7])
         dist = float(p[7]) if len(p) > 7 and p[7] not in ("", "nan") else None
     except ValueError:
@@ -141,7 +141,7 @@ def parse_line(line):
 class HardwareRig:
     """Arduino stream over USB serial + camera fingertip tracking. Untested on real hardware."""
 
-    def __init__(self, port, tracker=None, mapper=None, baud=460800):
+    def __init__(self, port, tracker=None, mapper=None, baud=460800, time_unit="us", protocol="repo"):
         import serial
 
         from scale import OverheadMapper
@@ -149,6 +149,7 @@ class HardwareRig:
         # serial_for_url accepts real device paths AND pyserial URLs like loop:// (used by the tests)
         self.ser = serial.serial_for_url(port, baudrate=baud, timeout=0.2)
         self.tracker, self.mapper = tracker, mapper or OverheadMapper()
+        self.time_unit, self.protocol = time_unit, protocol  # protocol "trainer" = the standalone sketch: B = buzz, D = double click
         self.has_camera = tracker is not None
         self.q = queue.Queue(maxsize=4000)
         self._dist, self._t0 = 14.0, None
@@ -159,7 +160,7 @@ class HardwareRig:
     def _read_serial(self):
         while not self._stop:
             try:
-                parsed = parse_line(self.ser.readline().decode("ascii", errors="ignore"))
+                parsed = parse_line(self.ser.readline().decode("ascii", errors="ignore"), self.time_unit)
             except Exception:
                 continue
             if parsed:
@@ -182,11 +183,17 @@ class HardwareRig:
 
     def buzz(self, effect=47):
         """Ask the Arduino to play a DRV2605L effect (47 = strong buzz)."""
-        self.ser.write(f"H{effect}\n".encode())
+        if self.protocol == "trainer":
+            self.ser.write(b"B\n")
+        else:
+            self.ser.write(f"H{effect}\n".encode())
 
     def play(self, kind):
         """Game-mode haptics: tick / buzz / burst / success (DRV2605L effect ids: verify on the real motor)."""
-        self.buzz(HAPTIC_EFFECTS[kind])
+        if self.protocol == "trainer":  # the standalone sketch only knows B (buzz) and D (double click)
+            self.ser.write(b"D\n" if kind == "success" else b"B\n")
+        else:
+            self.buzz(HAPTIC_EFFECTS[kind])
 
     def close(self):
         self._stop = True
