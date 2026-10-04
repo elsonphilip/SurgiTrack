@@ -7,7 +7,7 @@ import { getPath } from "./paths";
 import type { Baseline, DataSource, Profile, RawSample, Session, SessionMetrics } from "./types";
 
 /**
- * Tiny JSON-file store (fine for a single Pi / demo). Swap for SQLite/Postgres later —
+ * Tiny JSON-file store (fine for a single machine / demo). Swap for SQLite/Postgres later —
  * everything goes through the functions below.
  * Data lives in web/data/ (gitignored). Raw sensor traces go in data/raw/<sessionId>.json.
  *

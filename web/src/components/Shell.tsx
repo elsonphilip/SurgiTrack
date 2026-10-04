@@ -75,7 +75,7 @@ export function Shell({
     ["R4", "Arduino R4 WiFi (simulated)", dim],
     ["IMU", "BMI270 (simulated)", dim],
     ["HPT", "DRV2605L haptic (simulated)", haptic ? "var(--accent)" : dim],
-    ["CAM", "Pi Camera (simulated)", dim],
+    ["CAM", "Camera (simulated)", dim],
     ["SR04", "HC-SR04 distance (simulated)", dim],
   ];
 

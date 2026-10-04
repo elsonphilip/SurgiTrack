@@ -10,7 +10,7 @@ export interface Profile {
   source: DataSource;
 }
 
-/** Metrics the Pi (or the simulator) computes for one session. */
+/** Metrics the tracker (or the simulator) computes for one session. */
 export interface SessionMetrics {
   /** % of path samples within the level's tolerance of the target path (0-100). */
   accuracy: number;

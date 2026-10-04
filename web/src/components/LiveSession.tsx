@@ -13,7 +13,7 @@ import { BleedLines, CardHead, Stat } from "./ui";
 /*
  * Live Session screen. The sensor feed here is SIMULATED (ported from the design prototype):
  * sessions it records are saved as source:"synthetic" and never count toward a real profile.
- * To go live, replace `simulate()` with samples from the Pi WebSocket (IMU, fingertip px, distance).
+ * To go live, replace `simulate()` with samples from the tracker WebSocket (IMU, fingertip px, distance).
  */
 
 const W = 960, H = 480, PX = 8; // canvas logical size; 8 px = 1 mm
@@ -48,7 +48,7 @@ function cachePath(r: { settings: Settings; path: PathDef; pts: number[][] }, le
   r.pts = samplePath(r.path, 320);
 }
 
-/** Send a command to the Pi runner (docs/PROTOCOL.md) if connected. */
+/** Send a command to the tracker (docs/PROTOCOL.md) if connected. */
 function piSend(r: { ws: WebSocket | null }, m: object) {
   if (r.ws && r.ws.readyState === 1) r.ws.send(JSON.stringify(m));
 }
@@ -226,7 +226,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
     if (startSignal !== firstSignal.current) { firstSignal.current = startSignal; startCalib(); }
   }, [startSignal, startCalib]);
 
-  // Raspberry Pi data source: the Pi runner (pi/server.py) streams frames + state over a WebSocket.
+  // Python tracker data source: the tracker (tracker/server.py) streams frames + state over a WebSocket.
   useEffect(() => {
     const r = R.current;
     if (settings.source !== "pi") return;
@@ -427,8 +427,8 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
             </div>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               {settings.source === "pi" ? (
-                <span className="chip" title={piStatus === "online" ? (piSim ? "Pi runner is using its simulated rig" : "Live from the Pi runner") : "Pi runner not reachable — start it with: python pi/server.py"} style={{ color: piStatus === "online" ? steel : "var(--warn)" }}>
-                  {piStatus === "online" ? (piSim ? "PI · SIMULATED" : "PI · LIVE") : "PI · OFFLINE"}
+                <span className="chip" title={piStatus === "online" ? (piSim ? "Tracker is using its simulated rig" : "Live from the tracker") : "Tracker not reachable — start it with: python server.py (in the tracker folder)"} style={{ color: piStatus === "online" ? steel : "var(--warn)" }}>
+                  {piStatus === "online" ? (piSim ? "TRACKER · SIMULATED" : "TRACKER · LIVE") : "PI · OFFLINE"}
                 </span>
               ) : (
                 <span className="chip" title="No hardware connected — sensor data is generated in the browser" style={{ color: steel }}>SIMULATED</span>
@@ -597,7 +597,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
           {settings.showCamera && (
             <div className="card" style={{ padding: "24px 26px", display: "flex", flexDirection: "column", gap: 14 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span className="card-title sm">Pi camera</span>
+                <span className="card-title sm">Camera</span>
                 <span className="mono" style={{ height: 26, padding: "0 10px", borderRadius: 999, background: "var(--accent)", display: "flex", alignItems: "center", gap: 6, fontSize: 10, fontWeight: 600 }}>
                   <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--cream)" }} />REC
                 </span>
@@ -674,12 +674,12 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
                 Data source
                 <select value={settings.source} disabled={phase === "run"} onChange={(e) => setSettings((s) => ({ ...s, source: e.target.value as Settings["source"] }))}
                   style={{ height: 34, borderRadius: 999, border: 0, background: "var(--pill)", color: "var(--cream)", padding: "0 10px" }}>
-                  <option value="sim">Simulator</option><option value="pi">Raspberry Pi</option>
+                  <option value="sim">Simulator</option><option value="pi">Tracker (Python)</option>
                 </select>
               </label>
               {settings.source === "pi" && (
                 <label style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                  Pi address
+                  Tracker address
                   <input type="text" value={settings.piUrl} disabled={phase === "run"} spellCheck={false} onChange={(e) => setSettings((s) => ({ ...s, piUrl: e.target.value }))}
                     style={{ width: 150, height: 34, borderRadius: 999, border: 0, background: "var(--pill)", color: "var(--cream)", padding: "0 12px" }} />
                 </label>

@@ -10,5 +10,5 @@ Suggested labels: `steady`, `fatigued`, `caffeine`, `simulated_tremor`, `clinica
 When training, split train/test **by user**, not by random window.
 
 ## Training labels
-`pi/train.py` uses `steady` (negative) vs `simulated_tremor` / `clinical_tremor` (positive). Other labels are skipped.
+`tracker/train.py` uses `steady` (negative) vs `simulated_tremor` / `clinical_tremor` (positive). Other labels are skipped.
 Record several people per class (≥5 participants minimum); the model is evaluated on people it never saw.

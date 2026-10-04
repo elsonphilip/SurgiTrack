@@ -1,23 +1,23 @@
 # SurgiTrack interfaces
 
 ```
- wristband (Arduino) ──USB serial──▶  Pi runner (pi/server.py)  ──WebSocket──▶  browser (Live Session)
+ wristband (Arduino) ──USB serial──▶  tracker (tracker/server.py)  ──WebSocket──▶  browser (Live Session)
         ▲                                   │  ▲                                      │
         └────── haptic commands ────────────┘  └── camera (MediaPipe)                 │
                                             └────── HTTP POST /api/sessions ──▶  website (web/) ◀──────┘
 ```
-Everything runs locally: the website on `http://localhost:3000`, the runner on `ws://localhost:8765` (or the Pi's address).
+Everything runs locally: the website on `http://localhost:3000`, the runner on `ws://localhost:8765` (or another machine on your network).
 
-## 1. Arduino ⇄ Pi (USB serial, 460800 baud, `\n` terminated)
-**Arduino → Pi**, 200 Hz: `t_us,ax,ay,az,gx,gy,gz,dist_cm`
+## 1. Arduino ⇄ tracker (USB serial, 460800 baud, `\n` terminated)
+**Arduino → tracker**, 200 Hz: `t_us,ax,ay,az,gx,gy,gz,dist_cm`
 accel in g, gyro in deg/s, `t_us` = Arduino `micros()`, `dist_cm` = HC-SR04 height (empty until the first echo).
 Lines starting with `#` are comments (boot messages). Older firmware sent 7 fields (no distance) — still accepted.
 
-**Pi → Arduino:** `H<n>` play DRV2605L effect *n* (47 = strong buzz), `X` stop.
+**tracker → Arduino:** `H<n>` play DRV2605L effect *n* (47 = strong buzz), `X` stop.
 
-## 2. Pi runner ⇄ browser (WebSocket, JSON text frames)
-Run `python pi/server.py --simulate` (no hardware) or `python pi/server.py --serial /dev/ttyACM0 --camera 0`.
-In the website: Live Session → Settings → **Data source = Raspberry Pi**, address `ws://localhost:8765`.
+## 2. tracker ⇄ browser (WebSocket, JSON text frames)
+Run `python tracker/server.py --simulate` (no hardware) or `python tracker/server.py --serial /dev/ttyACM0 --camera 0`.
+In the website: Live Session → Settings → **Data source = Tracker (Python)**, address `ws://localhost:8765`.
 
 **Browser → runner**
 | message | effect |
@@ -52,7 +52,7 @@ Coordinates are millimetres on the 120 × 60 mm trace area, origin top-left, +y 
 Set `SURGITRACK_API_KEY` on the website and `--api-key` on the runner to require a bearer token.
 Response: `{ session, promoted, counted, isBest, prevBest }`. The site computes the overall score.
 
-## Metric definitions (`pi/engine.py`, `pi/tremor.py`)
+## Metric definitions (`tracker/engine.py`, `tracker/tremor.py`)
 * **accuracy** = % of camera samples within the level's tolerance of the path · **avgDeviationMm** = mean distance to the path
 * **tremor (0–10)** = `10·clip(RMS₄₋₁₂Hz(accel) / (K·σ_base), 0, 1)`; σ_base = same band RMS measured in the 5 s still calibration
 * **smoothness (0–100)** = `100 − α·max(0, ln(DJ) − ln_ref)` from the fingertip speed profile (DJ = dimensionless jerk)

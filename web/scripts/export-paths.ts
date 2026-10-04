@@ -1,4 +1,4 @@
-/** Write ../data/paths.json (points in mm) so the Pi computes deviation against the same shapes. */
+/** Write ../data/paths.json (points in mm) so the tracker computes deviation against the same shapes. */
 import { writeFileSync } from "node:fs";
 import path from "node:path";
 import { CANVAS, LEVELS_TOL, PATHS, lengthMm, samplePath } from "../src/lib/paths-export";

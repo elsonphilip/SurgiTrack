@@ -3,7 +3,7 @@
  *
  * Coordinates are canvas pixels on the 960×480 Live Session canvas (8 px = 1 mm, so 120 × 60 mm).
  * Each path is `at(t)` for t ∈ [0, 1] → [x, y]. The first path of each level is the original design path
- * and must not change. Run `npm run export:paths` to regenerate ../data/paths.json for the Pi, which uses the
+ * and must not change. Run `npm run export:paths` to regenerate ../data/paths.json for the tracker, which uses the
  * same shapes to compute path deviation in mm.
  */
 export type Pt = [number, number];

@@ -5,10 +5,10 @@ import type { RawSample } from "@/lib/types";
 export const dynamic = "force-dynamic";
 
 /**
- * Pi → site. Body:
+ * tracker → site. Body:
  * { userId, level, metrics:{accuracy,avgDeviationMm,tremor(0-10),smoothness,completionTimeS,hapticPulses},
  *   baseline?:{pitch,roll,noiseSigma}, pathId?, screening?:{tremorProbability,windows}, simulated?, date?, raw? }
- * Stored as source:"device" — unless `simulated: true` (the Pi runner's --simulate mode), which stores it as
+ * Stored as source:"device" — unless `simulated: true` (the tracker's --simulate mode), which stores it as
  * source:"synthetic" (DEMO data that never counts toward real profiles). If SURGITRACK_API_KEY is set, send it as
  * `Authorization: Bearer <key>`.
  */

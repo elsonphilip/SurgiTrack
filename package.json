@@ -15,7 +15,7 @@
     "check:paths": "npm --prefix web run check:paths",
     "export:paths": "npm --prefix web run export:paths",
     "postinstall": "node scripts/ensure-web-deps.mjs",
-    "pi:sim": "python3 pi/server.py --simulate",
-    "pi:test": "python3 -m pytest pi -q"
+    "tracker:sim": "python3 tracker/server.py --simulate",
+    "tracker:test": "python3 -m pytest tracker -q"
   }
 }

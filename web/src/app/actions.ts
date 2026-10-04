@@ -14,7 +14,7 @@ export async function createProfileAction(formData: FormData) {
 
 /**
  * Save a session recorded by the in-browser SIMULATOR. Always stored as source:"synthetic"
- * (demo data) — real sessions come in through POST /api/sessions from the Pi.
+ * (demo data) — real sessions come in through POST /api/sessions from the tracker.
  */
 export async function saveSimulatedSession(input: {
   userId: string;

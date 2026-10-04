@@ -15,7 +15,7 @@ const DEFS = [
   { name: "Overall score", src: "composite", f: "SCORE = .40·ACC + .25·SM + .20·(100 − 10·TRM) + .15·TIME", body: "TIME rewards finishing near the level’s target duration. Weights are a starting point to tune with real data." },
 ];
 
-/** Held-out result written by pi/train.py (../models/report.json); "pending dataset" until a model is trained. */
+/** Held-out result written by tracker/train.py (../models/report.json); "pending dataset" until a model is trained. */
 async function testAccuracy(): Promise<string> {
   try {
     const r = JSON.parse(await fs.readFile(path.resolve(process.cwd(), "..", "models", "report.json"), "utf8"));
@@ -33,7 +33,7 @@ export default async function Scoring({ params }: PageProps<"/p/[id]/scoring">) 
   if (!profile) notFound();
   const CHIPS = [
     ["Input", "6-ch IMU · 2 s windows"],
-    ["Model", "LightGBM on Pi"],
+    ["Model", "LightGBM"],
     ["Split", "80 / 20 by participant"],
     ["Classes", "typical · elevated · refer"],
     ["Test acc.", await testAccuracy()],
