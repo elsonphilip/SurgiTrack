@@ -31,7 +31,7 @@ function saveGame(on: boolean) {
   document.cookie = `${GAME_COOKIE}=${on ? "on" : "off"}; path=/; max-age=31536000; samesite=lax`;
 }
 
-const GAME_LABELS: Record<string, string> = { live: "Arena", progress: "Progress & badges" };
+const GAME_LABELS: Record<string, string> = { live: "Mission Control", progress: "Progress & badges" };
 
 const NAV: Record<View, readonly (readonly [string, string])[]> = {
   detailed: [

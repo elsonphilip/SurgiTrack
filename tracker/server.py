@@ -27,7 +27,7 @@ FRAME_HZ = 30.0
 class Runner:
     def __init__(self, rig, simulated, site, api_key=None, fs=100.0, screener=None):
         self.rig, self.simulated, self.site, self.api_key = rig, simulated, site, api_key
-        self.engine = SessionEngine(fs=fs, haptic=rig.buzz, screener=screener)
+        self.engine = SessionEngine(fs=fs, haptic=rig.buzz, screener=screener, haptic_fx=rig.play)
         self.clients, self.user_id, self.loop = set(), None, None
         self._stop = threading.Event()
         self._seen_version = -1
@@ -112,7 +112,7 @@ class Runner:
         if cmd == "set":
             if m.get("userId"):
                 self.user_id = str(m["userId"])
-            e.configure(level=m.get("level"), path_id=m.get("pathId"), length_s=m.get("sessionLength"))
+            e.configure(level=m.get("level"), path_id=m.get("pathId"), length_s=m.get("sessionLength"), tiered=m.get("game"))
         elif cmd == "calibrate":
             e.begin_calibration()
         elif cmd == "calib_next":

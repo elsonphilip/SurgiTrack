@@ -16,6 +16,9 @@ import numpy as np
 from engine import Sample
 
 
+# DRV2605L library effect ids for each game-mode tier (not yet tried on the real motor).
+HAPTIC_EFFECTS = {"tick": 24, "buzz": 47, "burst": 14, "success": 10}
+
 class CameraFeed:
     """Background thread: camera tracker → mapper → latest fingertip in trace-area mm, plus a preview JPEG for the browser."""
 
@@ -62,6 +65,7 @@ class SimulatedRig:
         self.speed, self.realtime = speed, realtime
         self.rng = np.random.default_rng(seed)
         self.t, self._next_finger, self.buzzes = 0.0, 0.0, 0
+        self.fx = []  # game-mode haptic kinds played, newest last
         self._finger = None  # last fingertip position; held between camera frames like the real rig
         self._wall0 = time.perf_counter()
         self.has_camera = tracker is not None
@@ -69,6 +73,9 @@ class SimulatedRig:
 
     def buzz(self):
         self.buzzes += 1
+
+    def play(self, kind):
+        self.fx.append(kind)
 
     def latest_jpeg(self):
         return self.cam.jpeg if self.cam else None
@@ -176,6 +183,10 @@ class HardwareRig:
     def buzz(self, effect=47):
         """Ask the Arduino to play a DRV2605L effect (47 = strong buzz)."""
         self.ser.write(f"H{effect}\n".encode())
+
+    def play(self, kind):
+        """Game-mode haptics: tick / buzz / burst / success (DRV2605L effect ids: verify on the real motor)."""
+        self.buzz(HAPTIC_EFFECTS[kind])
 
     def close(self):
         self._stop = True

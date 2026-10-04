@@ -13,11 +13,11 @@ from paths import load_paths  # noqa: E402
 from rig import SimulatedRig, parse_line  # noqa: E402
 
 
-def run_session(skill, level=3, path_id="l3-zigzag", seed=3, length=12.0):
+def run_session(skill, level=3, path_id="l3-zigzag", seed=3, length=12.0, tiered=False, fx=None):
     rig = SimulatedRig(realtime=False, skill=skill, seed=seed)
     buzzes = []
-    e = SessionEngine(fs=100.0, haptic=lambda: buzzes.append(1))
-    e.configure(level=level, path_id=path_id, length_s=length)
+    e = SessionEngine(fs=100.0, haptic=lambda: buzzes.append(1), haptic_fx=(fx.append if fx is not None else None))
+    e.configure(level=level, path_id=path_id, length_s=length, tiered=tiered)
     e.begin_calibration(); e.calib_next(); e.calib_next()
     while e.phase == "calib" and e.cal_step == 2:
         e.feed(rig.read(e.target_mm(), False))
@@ -156,3 +156,34 @@ def test_parse_line():
     assert parse_line("123,0.1,0.2,0.98,1,2,3") == (123, (0.1, 0.2, 0.98, 1.0, 2.0, 3.0), None)
     assert parse_line("123,0.1,0.2,0.98,1,2,3,14.5")[2] == 14.5
     assert parse_line("# comment") is None and parse_line("1,2,3") is None and parse_line("x,1,2,3,4,5,6") is None
+
+
+def test_tiered_haptics_do_not_change_the_measurements():
+    plain = run_session(0.5)[1][0][1]["metrics"]
+    fx = []
+    tiered = run_session(0.5, tiered=True, fx=fx)[1][0][1]["metrics"]
+    assert tiered == plain  # game mode only drives the motor
+    assert fx
+
+
+def test_tiered_haptics_cover_the_tiers_and_rate_limits():
+    fx = []
+    run_session(0.2, tiered=True, fx=fx)
+    assert {"tick", "buzz"} <= set(fx)
+    # a sloppy run never buzzes faster than the burst gap allows
+    assert len(fx) <= 12 / 0.12 + 5
+
+
+def test_clean_sections_earn_success_pulses():
+    fx = []
+    e, events, _ = run_session(1.0, level=1, path_id="l1-straight", tiered=True, fx=fx)
+    assert fx.count("success") == e.success_pulses >= 1
+    fx2 = []
+    run_session(0.0, level=3, path_id="l3-zigzag", tiered=True, fx=fx2)
+    assert fx2.count("success") <= fx.count("success")
+
+
+def test_standard_mode_is_untouched():
+    fx = []
+    run_session(0.3, fx=fx)
+    assert fx == []  # tiers only fire when the site asks for game mode

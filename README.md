@@ -22,15 +22,22 @@ python recorder.py --port /dev/ttyACM0 --user u01 --task steady_hold --label ste
 ```
 ## Two separate switches: Mode and Display
 
-- **Mode: Standard | Game** (top bar). Game turns practice into challenges with points, hit combos, stars, XP, ranks
-  (Student → Chief) and badges. The challenges are Precision Rush, Steady Hand, Maze, Trace, Survival (the zone shrinks)
-  and Zen (jerks break your chain).
+- **Mode: Standard | Game** (top bar). Game is a space-navigation mission: your fingertip (or stylus) flies a cute rocket
+  along a glowing trajectory through a corridor, past planets, asteroids and gates. Missions follow the levels: Launch,
+  Orbit, Asteroid Field, Gravity Well, Reentry (tighter corridor each time). Staying centred builds a stability multiplier
+  and hit combo, leaving the corridor costs hull, and clean gates and sections earn bonuses. Challenges (Precision Rush,
+  Steady Hand, Maze, Trace, Survival, Zen) change the rules for points, combos and which route you get.
+  Mission score = Accuracy × Stability × Speed bonus, where speed can add at most 15% so it never makes up for a sloppy
+  flight. Stars, XP, ranks (Student → Chief) and badges are derived from saved sessions.
 - **Display: Simple | Detailed.** Simple shows score, accuracy, timer and plain feedback. Detailed adds deviation,
   tremor, smoothness, graphs and sensor data.
 
-They combine freely (Game + Simple, Game + Detailed, and so on). Game rules only change points, combos and which path you
+They combine freely (Game + Simple, Game + Detailed, and so on). Game rules only change points, combos and which route you
 get. Accuracy, tremor, smoothness and the score are measured the same way in every mode, so every run still produces the
-same data for the model. XP, ranks and badges are derived from saved sessions (`web/src/lib/game.ts`).
+same data for the model. In Game mode the tracker also plays tiered haptics (tick near the edge, buzz outside it, repeated
+pulses far outside, a success pulse for a clean quarter of the path). They only drive the motor, never the metrics. The
+DRV2605L effect ids for each tier (`HAPTIC_EFFECTS` in `tracker/rig.py`) still need trying on the real motor.
+Code: `web/src/lib/game.ts`, `space.ts`, `space-draw.ts`.
 
 ## Tremor model (`tracker/`)
 ```

@@ -19,6 +19,10 @@ from paths import deviation_mm, load_paths
 LEVEL_TOL = {1: 3.0, 2: 2.5, 3: 2.0, 4: 1.5, 5: 1.0}  # mm — must match web/src/lib/scoring.ts (tested)
 CAL_SECONDS = 5.0
 HAPTIC_MIN_GAP_S = 0.25
+# Game-mode haptic tiers (multiples of the level tolerance): tick from 75% of it, buzz outside it, burst past 2x.
+WARN_DRIFT, MAJOR_DRIFT = 0.75, 2.0
+TICK_GAP_S, BURST_GAP_S = 0.5, 0.12
+SECTIONS = 4  # a clean quarter of the path earns a success pulse
 RAW_CAP = 20000
 
 
@@ -45,10 +49,13 @@ def target_at(path_id, progress):
 
 
 class SessionEngine:
-    def __init__(self, fs=100.0, haptic=None, screener=None):
+    def __init__(self, fs=100.0, haptic=None, screener=None, haptic_fx=None):
         self.lock = threading.RLock()
         self.fs = float(fs)
         self.haptic = haptic or (lambda: None)
+        # Game mode: tiered haptics (tick / buzz / burst / success). haptic_fx(kind) plays the matching effect.
+        self.haptic_fx = haptic_fx or (lambda kind: None)
+        self.tiered = False
         self.screener = screener
         self.level, self.path_id, self.length_s = 1, "l1-straight", 12.0
         self.phase, self.cal_step, self.cal_count = "idle", 0, 5
@@ -60,7 +67,7 @@ class SessionEngine:
         self._reset_run()
 
     # ---------- configuration / commands ----------
-    def configure(self, level=None, path_id=None, length_s=None):
+    def configure(self, level=None, path_id=None, length_s=None, tiered=None):
         with self.lock:
             if self.phase == "run":
                 raise EngineError("Can't change settings during a run")
@@ -80,6 +87,8 @@ class SessionEngine:
                 if not 5 <= length_s <= 40:
                     raise EngineError("session length must be 5–40 s")
                 self.length_s = float(length_s)
+            if tiered is not None:
+                self.tiered = bool(tiered)
             self.version += 1
 
     def begin_calibration(self):
@@ -143,7 +152,7 @@ class SessionEngine:
                 "trem": round(trem, 1), "smooth": round(self._live_smooth(), 0),
                 "pct": round(100 * self._progress()) if self.phase == "run" else 0,
                 "time": round(self._elapsed(), 2) if self.phase == "run" else 0.0,
-                "pulses": self._pulses, "haptic": s.t < self._haptic_until,
+                "pulses": self._pulses, "haptic": s.t < self._haptic_until, "hapticKind": self._fx_kind if s.t < self._haptic_until else None,
                 "spec": T.spectrum14(np.array([i[:3] for i in self._imu]), self.fs),
             }
 
@@ -170,11 +179,49 @@ class SessionEngine:
         self._pulses = 0
         self._haptic_until = -1.0
         self._last_buzz = -1e9
+        self._last_tick = self._last_burst = -1e9
+        self._fx_kind = None
+        self._sec = 0
+        self._sec_n = self._sec_out = 0
+        self.success_pulses = 0
         self._accel, self._raw = [], []
         self._ft, self._fx = [], []
         self._last_screen = 0.0
         self._screen = []
         self._cal_t0, self._cal_buf = None, []
+
+    # Game-mode haptics. These only drive the motor; they never change the recorded metrics.
+    def _play(self, kind, t, hold):
+        self._fx_kind, self._haptic_until = kind, t + hold
+        self.haptic_fx(kind)
+
+    def _tiered_haptics(self, t, d, out, el):
+        tol = self.tolerance()
+        sec = min(SECTIONS - 1, int(min(el / self.length_s, 0.9999) * SECTIONS))
+        if sec != self._sec:
+            self._close_section()
+            self._sec = sec
+        self._sec_n += 1
+        self._sec_out += out
+        if d > MAJOR_DRIFT * tol:  # major: repeated pulses
+            if t - self._last_burst >= BURST_GAP_S:
+                self._last_burst = t
+                self._play("burst", t, BURST_GAP_S)
+        elif out:  # significant: stronger pulse
+            if t - self._last_buzz >= HAPTIC_MIN_GAP_S:
+                self._last_buzz = t
+                self._play("buzz", t, HAPTIC_MIN_GAP_S)
+        elif d > WARN_DRIFT * tol:  # slight: tiny pulse
+            if t - self._last_tick >= TICK_GAP_S:
+                self._last_tick = t
+                self._play("tick", t, 0.1)
+
+    def _close_section(self):
+        """Success pulse when a whole quarter of the path was flown without leaving the band."""
+        if self._sec_n >= 5 and self._sec_out == 0:
+            self.success_pulses += 1
+            self._play("success", self._last.t, 0.2)
+        self._sec_n = self._sec_out = 0
 
     def _elapsed(self):
         return 0.0 if self._t0 is None else self._last.t - self._t0
@@ -219,7 +266,9 @@ class SessionEngine:
                 self._in += 1
             if out and not self._out:
                 self._pulses += 1
-            if out and s.t - self._last_buzz >= HAPTIC_MIN_GAP_S:
+            if self.tiered:
+                self._tiered_haptics(s.t, d, out, el)
+            elif out and s.t - self._last_buzz >= HAPTIC_MIN_GAP_S:
                 self._last_buzz, self._haptic_until = s.t, s.t + HAPTIC_MIN_GAP_S
                 self.haptic()
             self._out = out
@@ -232,6 +281,8 @@ class SessionEngine:
             except Exception:
                 self.screener = None  # a broken model must never break a session
         if el >= self.length_s:
+            if self.tiered:
+                self._close_section()
             events.append(self._finish(el))
         return events
 

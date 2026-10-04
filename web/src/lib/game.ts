@@ -1,4 +1,5 @@
 import type { Session } from "./types";
+import { missionParts } from "./space";
 
 /** Game mode is a cosmetic layer on top of the same data: XP, ranks, stars and badges are all derived from stored sessions. */
 export const GAME_COOKIE = "st_game";
@@ -12,16 +13,21 @@ export const RANKS = [
   { name: "Chief", xp: 2200 },
 ] as const;
 
-export function stars(score: number): 1 | 2 | 3 {
-  return score >= 90 ? 3 : score >= 75 ? 2 : 1;
+/** Stars are judged on the mission score (Accuracy × Stability × Speed bonus, see lib/space.ts). */
+export function stars(missionScore: number): 1 | 2 | 3 {
+  return missionScore >= 85 ? 3 : missionScore >= 65 ? 2 : 1;
 }
 
-export function sessionXp(score: number): number {
-  return Math.round(score) + stars(score) * 10;
+type XpSession = Pick<Session, "accuracy" | "smoothness" | "tremor" | "completionTimeS" | "level">;
+
+/** XP is derived from saved metrics only, so it is identical whenever and wherever it is recomputed. */
+export function sessionXp(s: XpSession): number {
+  const m = missionParts(s, s.level).score;
+  return m + stars(m) * 10;
 }
 
-export function totalXp(sessions: Pick<Session, "score">[]): number {
-  return sessions.reduce((a, s) => a + sessionXp(s.score), 0);
+export function totalXp(sessions: XpSession[]): number {
+  return sessions.reduce((a, s) => a + sessionXp(s), 0);
 }
 
 export function rankFor(xp: number) {
@@ -76,11 +82,11 @@ export interface Challenge {
   calm?: boolean;
 }
 export const CHALLENGES: readonly Challenge[] = [
-  { id: "rush", name: "Precision Rush", tagline: "Finish the path accurately. Every hit builds your combo.", path: "chosen", band: () => 1 },
-  { id: "steady", name: "Steady Hand", tagline: "A tighter zone. Keep the tool inside it.", path: "chosen", band: () => 0.6 },
+  { id: "rush", name: "Precision Rush", tagline: "Fly the trajectory accurately. Every hit builds your combo.", path: "chosen", band: () => 1 },
+  { id: "steady", name: "Steady Hand", tagline: "A tighter corridor. Keep the ship inside it.", path: "chosen", band: () => 0.6 },
   { id: "maze", name: "Maze", tagline: "A new route every run.", path: "shuffle", band: () => 1 },
   { id: "trace", name: "Trace", tagline: "The most complex shape for your level.", path: "hardest", band: () => 1 },
-  { id: "survival", name: "Survival", tagline: "The zone shrinks as you go.", path: "chosen", band: (p) => 1.6 - p },
+  { id: "survival", name: "Survival", tagline: "The corridor closes in as you fly.", path: "chosen", band: (p) => 1.6 - p },
   { id: "zen", name: "Zen", tagline: "Smooth and calm. Sudden jerks break the chain.", path: "chosen", band: () => 1.2, calm: true },
 ];
 export const challengeById = (id: string): Challenge => CHALLENGES.find((c) => c.id === id) ?? CHALLENGES[0];
