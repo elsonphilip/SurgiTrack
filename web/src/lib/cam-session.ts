@@ -8,6 +8,7 @@ export const TRACE_MM = [120, 60] as const;
 const HAND_REF_MM = 95;
 const K = 10, ALPHA = 4, LN_REF = 8;
 const MIN_SIGMA_MM = 0.03;
+const DEADBAND_MM = 0.8;
 const BAND: [number, number] = [4, 12];
 
 export interface Lm { x: number; y: number; z?: number }
@@ -19,7 +20,8 @@ const median = (a: number[]) => { const s = [...a].sort((x, y) => x - y); return
 /** One Euro filter: smooths hard when the fingertip is still (kills landmark jitter), follows quickly when it moves. */
 class OneEuro {
   private x?: number; private dx = 0; private t?: number;
-  constructor(private minCutoff = 1.0, private beta = 0.3, private dCutoff = 1.0) {}
+  // beta is small on purpose: with a small, far-away hand the landmark noise looks like fast movement, and a large beta would switch the smoothing off
+  constructor(private minCutoff = 0.8, private beta = 0.02, private dCutoff = 1.0) {}
   private alpha(cutoff: number, dt: number) { const tau = 1 / (2 * Math.PI * cutoff); return 1 / (1 + tau / dt); }
   filter(v: number, t: number) {
     if (this.x === undefined || this.t === undefined) { this.x = v; this.t = t; return v; }
@@ -138,7 +140,11 @@ export class CamRun {
   private px = 8;
   private n = 0; private inN = 0; private devSum = 0; private pulses = 0; private wasOut = false;
   private fx = new OneEuro(); private fy = new OneEuro();
-  private offset: [number, number] = [0, 0];
+  private held: [number, number] | null = null; // dead band output: the fingertip only "moves" once it has moved more than DEADBAND_MM
+  private sm: [number, number] = [0, 0];       // latest smoothed fingertip (before anchoring)
+  private anchor: { tip: [number, number]; target: [number, number] } | null = null;
+  gain = 1; // movement size: 1 = real millimetres, 2 = half the hand movement covers the same path
+  private idx = 0; // progress along the path (index into pts)
   private raw: [number, number] = [0, 0];
   private placed: [number, number] = [0, 0];
   track: Pt[] = [];   // raw fingertip (the tremor is measured on this)
@@ -152,22 +158,30 @@ export class CamRun {
   observe(t: number, mm: [number, number]): [number, number] {
     this.raw = mm;
     const sx = this.fx.filter(mm[0], t), sy = this.fy.filter(mm[1], t);
-    this.placed = [sx + this.offset[0], sy + this.offset[1]];
+    if (!this.held || Math.hypot(sx - this.held[0], sy - this.held[1]) > DEADBAND_MM) this.held = [sx, sy];
+    this.sm = this.held;
+    const a = this.anchor;
+    this.placed = a ? [a.target[0] + this.gain * (this.sm[0] - a.tip[0]), a.target[1] + this.gain * (this.sm[1] - a.tip[1])] : this.sm;
     return this.placed;
   }
 
   /** The run starts with the fingertip where the path starts, so you don't have to line your hand up with a fixed spot in the camera. */
   anchorTo(targetMm: [number, number]) {
-    this.offset = [targetMm[0] - (this.placed[0] - this.offset[0]), targetMm[1] - (this.placed[1] - this.offset[1])];
+    this.anchor = { tip: [this.sm[0], this.sm[1]], target: targetMm };
     this.placed = [targetMm[0], targetMm[1]];
+    this.idx = 0;
   }
 
   beginRun(ptsPx: number[][], tolMm: number, px: number) {
     this.pts = ptsPx; this.tolMm = tolMm; this.px = px;
-    this.n = this.inN = this.pulses = 0; this.devSum = 0; this.wasOut = false; this.track = []; this.trackS = [];
+    this.n = this.inN = this.pulses = 0; this.devSum = 0; this.wasOut = false; this.track = []; this.trackS = []; this.idx = 0;
   }
 
-  /** Record the sample from the last observe() (t in seconds). Returns the canvas position, distance from the path and whether it is outside the band. */
+  /**
+   * Record the sample from the last observe() (t in seconds). Returns the true fingertip position, its distance from the path and whether
+   * it is outside the band (that is what is scored), plus (sx, sy): the nearest point on the path just ahead of where you were, which is
+   * where the ship is drawn so the trail follows the path instead of wherever the noisy fingertip wanders.
+   */
   push(t: number) {
     const mm = this.placed;
     const x = mm[0] * this.px, y = mm[1] * this.px;
@@ -179,7 +193,14 @@ export class CamRun {
     this.wasOut = out;
     this.track.push([t, this.raw[0], this.raw[1]]);
     this.trackS.push([t, mm[0], mm[1]]);
-    return { x, y, dev, out };
+    // progress along the path: nearest point in a window around the last one (so spiral arms next to each other can't swap)
+    let best = this.idx, bd = 1e18;
+    for (let i = Math.max(0, this.idx - 12); i <= Math.min(this.pts.length - 1, this.idx + 40); i++) {
+      const d = (this.pts[i][0] - x) ** 2 + (this.pts[i][1] - y) ** 2;
+      if (d < bd) { bd = d; best = i; }
+    }
+    this.idx = best;
+    return { x, y, dev, out, sx: this.pts[best][0], sy: this.pts[best][1], progress: best / Math.max(1, this.pts.length - 1) };
   }
 
   get samples() { return this.n; }

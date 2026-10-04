@@ -138,6 +138,11 @@ export function drawSpace(g: G, r: Scene, now: number, d: Dims) {
   for (let i = 1; i < T.length; i++) { if (Math.hypot(T[i][0] - T[i - 1][0], T[i][1] - T[i - 1][1]) > 90) continue; g.strokeStyle = heat && T[i][2] ? "#E3A857" : "rgba(166,202,200,.85)"; g.beginPath(); g.moveTo(T[i - 1][0], T[i - 1][1]); g.lineTo(T[i][0], T[i][1]); g.stroke(); }
   g.restore();
 
+  // where the fingertip really is (webcam): the ship rides the path, this ring shows the hand
+  if (r.mode === "cam" && r.phase === "run" && r.cursor) {
+    g.save(); g.strokeStyle = "rgba(143,200,255,.6)"; g.lineWidth = 2; g.setLineDash([4, 4]); g.beginPath(); g.arc(r.cursor[0], r.cursor[1], 12, 0, 7); g.stroke(); g.restore();
+  }
+
   // ship
   const head = r.phase === "run" && T.length ? T[T.length - 1] : r.cursor ?? null;
   if (head || r.phase === "idle") {

@@ -64,8 +64,8 @@ interface Result {
   screening?: { tremorProbability: number }; demo?: boolean;
 }
 export interface LastSession { acc: number; dev: number; trem: number; smooth: number }
-interface Settings { sessionLength: number; holdLength: number; traceStyle: "heat" | "mono"; showTolerance: boolean; showCamera: boolean; pathId: string; source: "sim" | "pi" | "cam"; piUrl: string }
-const DEFAULTS: Settings = { sessionLength: 12, holdLength: 30, traceStyle: "heat", showTolerance: true, showCamera: true, pathId: "", source: "cam", piUrl: "ws://localhost:8765" };
+interface Settings { sessionLength: number; holdLength: number; camGain: number; traceStyle: "heat" | "mono"; showTolerance: boolean; showCamera: boolean; pathId: string; source: "sim" | "pi" | "cam"; piUrl: string }
+const DEFAULTS: Settings = { sessionLength: 12, holdLength: 30, camGain: 1, traceStyle: "heat", showTolerance: true, showCamera: true, pathId: "", source: "cam", piUrl: "ws://localhost:8765" };
 
 /** "" = the level's original design path, "shuffle" = random path from the level each run, else a path id. */
 function resolvePath(level: number, pathId: string, avoidId?: string): PathDef {
@@ -212,7 +212,9 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
     }
     const el = (now - r.t0) / 1000, tt = clamp(el / r.settings.sessionLength, 0, 1);
     const o = r.cam.push(f.t);
-    if (o.x >= 0 && o.x <= W && o.y >= 0 && o.y <= H && r.trace.length < 5000) r.trace.push([o.x, o.y, o.out]);
+    // The ship and its trail ride ON the path (progress along it); the ring at the real fingertip (r.cursor) shows where your hand is.
+    // Scoring uses the real fingertip distance, so wandering off the path still costs accuracy.
+    if (r.trace.length < 5000) r.trace.push([o.sx, o.sy, o.out]);
     gameStep(r.g, !o.out, now, tt);
     if (o.out) { r.hapUntil = now + 220; r.hapKind = "buzz"; } // visual cue only: there is no wristband on this source
     if (now - r.lastUi > 120) {
@@ -300,7 +302,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
   const startRun = () => {
     const r = R.current;
     r.trace = []; r.raw = []; r.acc = { n: 0, in: 0, dev: 0, tr: 0, pulses: 0 }; r.wasOut = false; r.t0 = performance.now(); r.g = newGame(r.t0);
-    if (r.mode === "cam") { r.camStarted = false; r.camArm = r.t0 + 2500; setArmLeft(3); } // 2.5 s to get your hand ready; the clock starts after
+    if (r.mode === "cam") { r.cam.gain = r.settings.camGain; r.camStarted = false; r.camArm = r.t0 + 2500; setArmLeft(3); } // 2.5 s to get your hand ready; the clock starts after
     setResult(null); setError(null);
     setPhase("run");
   };
@@ -524,6 +526,10 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
         g.strokeStyle = heat && T[i][2] ? "#E3A857" : "#A6CAC8";
         g.beginPath(); g.moveTo(T[i - 1][0], T[i - 1][1]); g.lineTo(T[i][0], T[i][1]); g.stroke();
       }
+      if (r.mode === "cam" && r.cursor && r.phase === "run") { // where your fingertip really is (the ship rides the path)
+        g.strokeStyle = "rgba(90,164,214,.55)"; g.lineWidth = 2; g.setLineDash([4, 4]); g.beginPath(); g.arc(r.cursor[0], r.cursor[1], 11, 0, 7); g.stroke(); g.setLineDash([]);
+        g.fillStyle = "rgba(90,164,214,.8)"; g.beginPath(); g.arc(r.cursor[0], r.cursor[1], 2.5, 0, 7); g.fill();
+      }
       if ((r.mode === "pi" || r.mode === "cam") && r.cursor && r.phase !== "run") { // live fingertip, so you can line up with the start point
         g.strokeStyle = "#5AA4D6"; g.lineWidth = 3; g.beginPath(); g.arc(r.cursor[0], r.cursor[1], 11, 0, 7); g.stroke();
         g.fillStyle = "#5AA4D6"; g.beginPath(); g.arc(r.cursor[0], r.cursor[1], 3, 0, 7); g.fill();
@@ -699,7 +705,13 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
           )}
           {camMode && camStatus === "off" && phase === "idle" && (
             <div role="status" style={{ padding: "12px 16px", borderRadius: 16, background: "var(--pill)", fontSize: 13.5, lineHeight: 1.5 }}>
-              <b>Webcam mode.</b> Press Start and your browser will ask to use the camera. Hand tracking runs in your browser and the video never leaves this computer. Your fingertip is estimated from your hand size, so keep your whole hand in view.
+              <b>Webcam mode.</b> Press Start and your browser will ask to use the camera. Hand tracking runs in your browser and the video never leaves this computer. Your fingertip is estimated from your hand size, so keep your whole hand in view. The ship follows the path as you move your finger.
+              <label style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 10, flexWrap: "wrap" }}>
+                <span className="muted">Movement size</span>
+                <input type="range" min={0.5} max={3} step={0.25} value={settings.camGain} onChange={(e) => setSettings((st) => ({ ...st, camGain: Number(e.target.value) }))} style={{ width: 180 }} />
+                <span className="mono">×{settings.camGain.toFixed(2).replace(/0$/, "")}</span>
+                <span style={{ fontSize: 12.5, color: "rgba(166,202,200,.75)" }}>Higher = a smaller finger movement covers the whole path.</span>
+              </label>
             </div>
           )}
           {error && phase !== "done" && (

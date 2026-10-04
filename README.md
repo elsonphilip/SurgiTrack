@@ -27,6 +27,9 @@ MediaPipe hand tracking right in the page (the video never leaves your computer)
 game. Steps: allow the camera → show your hand (your hand size is the ruler: wrist to middle knuckle ≈ 95 mm) → hold still
 for 5 s (resting fingertip jitter becomes the tremor baseline) → trace the path.
 
+- The ship and its trail **ride the path** (progress along it as you move your finger); a dashed ring shows where your fingertip
+  really is, and scoring uses that real distance from the path. **Movement size** (slider before you start) lets a smaller finger
+  movement cover the whole path. The fingertip is smoothed (noise-robust filter plus a dead band), tremor is measured on the raw signal.
 - Accuracy and deviation are exact against the path; **tremor is an estimate** from 4-12 Hz fingertip jitter (a camera sees ~30
   frames a second), not the wristband's accelerometer. Treat it as a trainer, not a measurement.
 - Sessions save as real device sessions with no raw movement data, so they can't train the tremor model.
