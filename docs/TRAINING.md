@@ -36,9 +36,21 @@ headroom for 200 lines per second.
 python tracker/server.py --serial /dev/cu.usbmodem1101 --device trainer
 ```
 Then open the site → Live → it connects on its own (chip says **TRACKER · LIVE**). With no camera the session is a
-**steady hold**: the band measures your tremor, buzzes when it goes over the limit for your level (`B`; the sketch's
-double click `D` is the "perfect section" pulse in Game mode), and the site scores accuracy (time under the limit),
-tremor, steadiness and the usual overall score. Try it without the band: `python tracker/server.py --simulate --task hold --skill 0.85`.
+**steady hold**: the band measures your tremor, buzzes when it goes over the limit for your level, and the site scores accuracy
+(time under the limit), tremor, steadiness and the usual overall score. Try it without the band:
+`python tracker/server.py --simulate --task hold --skill 0.85`.
+
+**Both versions of the sketch work, with one difference:**
+- **`FOR_PI = true`** (streaming): the band sends raw movement (`millis,ax,ay,az,gx,gy,gz`). Sessions record raw data, so they
+  can be used for **training**. The website decides when to buzz (`B`; the double click `D` is the "perfect section" pulse).
+- **`FOR_PI = false`** (standalone, what the board runs if you never changed it): the band prints `tremor:<g> limit:<g>`, a
+  tremor level it computed itself, and buzzes by itself above its own limit (0.010 g). The tracker reads those lines
+  automatically. Sessions work and score normally, but **no raw movement is recorded, so they can't train the model**. The
+  tracker never sends a second buzz on top of the band's own, only the success double-click and buzzes for stricter levels.
+  The band's 0.010 g limit is exactly the level-1 limit (`tracker/engine.py: TREMOR_FULL_G`); higher levels are stricter
+  (0.0088, 0.0075, 0.0063, 0.0050 g).
+
+Check what your board is sending with `python tracker/collect.py --port <PORT> --raw --baud 115200`.
 
 ## 3. Record participants (about 4 minutes each)
 ```

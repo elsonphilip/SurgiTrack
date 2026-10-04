@@ -148,6 +148,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
   const [piSim, setPiSim] = useState(false);
   const [piCamera, setPiCamera] = useState(false);
   const [task, setTaskS] = useState<"path" | "hold">("path");
+  const [bandOnly, setBandOnly] = useState(false); // the band reports only its own tremor level (standalone sketch)
   const [video, setVideo] = useState<string | null>(null);
   const [handLost, setHandLost] = useState(false);
   const [gameStats, setGameStats] = useState({ points: 0, best: 1, chain: 0, hull: 100, gates: 0 });
@@ -309,6 +310,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
         const p = getPath(m.pathId);
         if (r.task !== "hold" && p && p.id !== r.path.id) { r.path = p; r.pts = samplePath(p, 320); setActivePath(p.id); }
       } else if (m.type === "frame") {
+        setBandOnly(m.tremorG != null);
         setImu(m.imu); setSpec(m.spec);
         r.hx = [...r.hx, m.imu[0]].slice(-60); r.hy = [...r.hy, m.imu[1]].slice(-60);
         setHx(r.hx); setHy(r.hy);
@@ -325,7 +327,13 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
             r.hpm += (ax - r.hpm) * 0.02;
             const hp = ax - r.hpm;
             r.hpv += (hp * hp - r.hpv) * 0.02;
-            const z = clamp(hp / Math.sqrt(Math.max(r.hpv, 1e-8)), -2.5, 2.5);
+            // Streaming band: the wobble follows the real accelerometer. Standalone band (tremor level only): the waveform is
+            // decorative, but its size is the band's real tremor reading.
+            const sec = now / 1000;
+            const z = m.tremorG != null
+              ? 0.8 * Math.sin(2 * Math.PI * 7.3 * sec) + 0.5 * Math.sin(2 * Math.PI * 10.9 * sec + 1.3)
+              : clamp(hp / Math.sqrt(Math.max(r.hpv, 1e-8)), -2.5, 2.5);
+
             const tolPx = LEVELS[r.level - 1].toleranceMm * PX;
             const amp = clamp(Number(m.trem) / (r.limit || 3), 0, 2.2) * tolPx * 0.55;
             if (r.trace.length < 5000) r.trace.push([HOLD_X0 + p * (HOLD_X1 - HOLD_X0), H / 2 + z * amp, !!m.out]);
@@ -362,7 +370,7 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
     return () => {
       closed = true; clearTimeout(retry); ws?.close();
       r.ws = null; r.mode = "sim"; r.phase = "idle"; r.trace = []; r.cursor = null;
-      r.task = "path"; setTaskS("path"); cachePath(r, r.level);
+      r.task = "path"; setTaskS("path"); setBandOnly(false); cachePath(r, r.level);
       setPiStatus("off"); setVideo(null); setHandLost(false); setPhaseS("idle"); setLive(EMPTY); setHapticOn(false); setHaptic(false);
     };
   }, [settings.source, settings.piUrl, profileId, router, setHaptic, setDist]);
@@ -544,6 +552,11 @@ export function LiveSession({ profileId, startLevel, nextId, last, autoStart }: 
           )}
           {settings.source === "pi" && piStatus === "online" && piCamera && handLost && phase !== "done" && (
             <div role="status" style={{ padding: "10px 16px", borderRadius: 16, background: "var(--pill)", color: "var(--warn)", fontSize: 13.5 }}>Can’t see your hand — keep it in view of the camera, palm toward it.</div>
+          )}
+          {settings.source === "pi" && piStatus === "online" && bandOnly && phase === "idle" && (
+            <div role="status" style={{ padding: "12px 16px", borderRadius: 16, background: "var(--pill)", fontSize: 13.5, lineHeight: 1.5 }}>
+              <b>Standalone band mode.</b> Your band reports its own tremor level, so sessions work and it buzzes you, but raw movement is not recorded, so these sessions can&apos;t be used to train the model. To record training data, upload the sketch with <span className="mono">FOR_PI = true</span>.
+            </div>
           )}
           {settings.source === "pi" && piStatus === "offline" && phase === "idle" && (
             <div role="status" style={{ padding: "12px 16px", borderRadius: 16, background: "var(--pill)", fontSize: 13.5, lineHeight: 1.5 }}>

@@ -121,3 +121,27 @@ def test_no_data_message_explains_what_to_check():
     msg = rig.no_data_message()
     assert "tremor:0.0100" in msg and "baud" in msg
     rig.close()
+
+
+def test_standalone_sketch_output_is_read_and_buzz_is_not_doubled():
+    """A board running the standalone (FOR_PI = false) sketch prints 'tremor:<g> limit:<g>' lines."""
+    import time
+    from rig import HardwareRig, parse_plotter_line
+
+    assert parse_plotter_line("tremor:0.0005 limit:0.0100") == (0.0005, 0.01)
+    assert parse_plotter_line("tremor:1.2e-3 limit:0.0100\r") == (0.0012, 0.01)
+    assert parse_plotter_line("12345,0.01,-0.02,0.99,1,2,3") is None
+    rig = HardwareRig("loop://", baud=115200, time_unit="ms", protocol="trainer")
+    rig.ser.write(b"tremor:0.0150 limit:0.0100\n")  # loops straight back into the reader
+    s = rig.read((0, 0), False)
+    assert s.tremor_g == 0.015 and s.imu[2] == 1.0
+    sent = []
+    rig.ser.write = sent.append
+    rig.buzz(); rig.play("burst")           # the band is over its own limit, so it is buzzing by itself: send nothing
+    rig.play("success")                     # a success pulse is always ours to send
+    assert sent == [b"D\n"]
+    rig.band_g = 0.004                      # under the band's own limit but possibly over a stricter level limit
+    rig.buzz()
+    assert sent == [b"D\n", b"B\n"]
+    rig.ser.write = lambda b: None
+    rig.close()

@@ -229,3 +229,45 @@ def test_hold_limits_tighten_with_level():
     assert vals == sorted(vals, reverse=True)
     with pytest.raises(EngineError):
         SessionEngine().configure(task="nonsense")
+
+
+def run_band(level, g_of_t, length=12.0, tiered=False, fx=None):
+    """Hold session driven only by a standalone band's own tremor reading (g), 50 readings a second, no raw IMU."""
+    buzzes = []
+    e = SessionEngine(fs=100.0, haptic=lambda: buzzes.append(1), haptic_fx=(fx.append if fx is not None else None))
+    e.configure(level=level, length_s=length, task="hold", tiered=tiered)
+    t = 0.0
+    step = 0.02
+    mk = lambda tt: Sample(tt, (0.0, 0.0, 1.0, 0.0, 0.0, 0.0), tremor_g=g_of_t(tt))  # noqa: E731
+    e.begin_calibration(); e.calib_next(); e.calib_next()
+    while e.phase == "calib" and e.cal_step == 2:
+        e.feed(mk(t)); t += step
+    e.calib_next()
+    events = []
+    while e.phase == "run":
+        events += e.feed(mk(t)); t += step
+    return e, events, buzzes
+
+
+def test_standalone_band_scores_its_own_tremor_level():
+    # the sketch's own limit is 0.010 g = the level-1 hold limit
+    e, ev, buzz = run_band(1, lambda t: 0.004)
+    m = ev[0][1]["metrics"]
+    assert ev[0][1]["raw"] == [] and m["accuracy"] == 100.0 and m["tremor"] < 2 and not buzz
+    assert e.baseline["noiseSigma"] == pytest.approx(0.004, abs=1e-4)
+    e2, ev2, buzz2 = run_band(1, lambda t: 0.02)
+    m2 = ev2[0][1]["metrics"]
+    assert m2["accuracy"] == 0.0 and m2["tremor"] >= 8 and buzz2
+
+
+def test_standalone_band_limits_tighten_with_level():
+    # limits in g: L1 0.0100, L2 0.0088, L3 0.0075, L4 0.0063, L5 0.0050
+    acc = lambda g, l: run_band(l, lambda t: g)[1][0][1]["metrics"]["accuracy"]  # noqa: E731
+    assert [acc(0.0085, l) for l in (1, 3, 5)] == [100.0, 0.0, 0.0]
+    assert [acc(0.0065, l) for l in (1, 3, 5)] == [100.0, 100.0, 0.0]
+
+
+def test_standalone_band_tiered_haptics_and_success_pulses():
+    fx = []
+    e, ev, _ = run_band(2, lambda t: 0.002 if t < 8 else 0.03, tiered=True, fx=fx)
+    assert fx.count("success") >= 1 and ("burst" in fx or "buzz" in fx)

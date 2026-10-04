@@ -47,7 +47,8 @@ class Runner:
 
     # ----- engine loop (own thread) -----
     def engine_loop(self):
-        e, last_frame, last_video, sent_video = self.engine, -1e9, -1e9, None  # wall-clock times of the last frame / preview sent
+        e, last_frame, last_video, sent_video = self.engine, -1e9, -1e9, None
+        told_standalone = False  # wall-clock times of the last frame / preview sent
         while not self._stop.is_set():
             try:
                 target, running = e.target_mm(), e.phase == "run"
@@ -56,6 +57,10 @@ class Runner:
                 self._emit({"type": "error", "message": f"sensor read failed: {ex}"})
                 time.sleep(0.5)
                 continue
+            if s.tremor_g is not None and not told_standalone:
+                told_standalone = True
+                print("Band is in standalone mode (it reports 'tremor:' / 'limit:' lines). Sessions work, but no raw movement is recorded, "
+                      "so they can't be used to train the model. For training data, upload the sketch with FOR_PI = true.")
             events = e.feed(s)
             if e.version != self._seen_version:
                 self._seen_version = e.version

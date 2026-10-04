@@ -7,6 +7,7 @@ Both expose  read(target_mm, running) -> Sample  and  buzz().
 """
 from __future__ import annotations
 import math
+import re
 import queue
 import threading
 import time
@@ -122,6 +123,15 @@ class SimulatedRig:
         return Sample(t, imu, self._finger, new, 14.2 + float(rng.normal(0, 0.15)))
 
 
+_PLOT = re.compile(r"^tremor:\s*(-?[\d.]+(?:e-?\d+)?)\s+limit:\s*(-?[\d.]+(?:e-?\d+)?)\s*$", re.I)
+
+
+def parse_plotter_line(line):
+    """The standalone sketch prints 'tremor:0.0105 limit:0.0100' (g). → (tremor_g, limit_g) or None."""
+    m = _PLOT.match((line or "").strip())
+    return (float(m.group(1)), float(m.group(2))) if m else None
+
+
 def parse_line(line, time_unit="us"):
     """'t,ax,ay,az,gx,gy,gz[,dist_cm]' → (t_us, imu6, dist or None); None if malformed. time_unit: "us" or "ms"."""
     if not line or line.startswith("#"):
@@ -152,6 +162,7 @@ class HardwareRig:
         self.time_unit, self.protocol = time_unit, protocol  # protocol "trainer" = the standalone sketch: B = buzz, D = double click
         self.has_camera = tracker is not None
         self.q = queue.Queue(maxsize=4000)
+        self.band_g, self.band_limit, self.band_at = 0.0, 0.01, -1e9  # last standalone-mode reading from the band
         self.n_lines = self.n_bad = 0   # lines read from the port / lines that did not parse (for the "no data" message)
         self.last_bad = ""
         self._dist, self._t0 = 14.0, None
@@ -163,8 +174,17 @@ class HardwareRig:
         while not self._stop:
             try:
                 text = self.ser.readline().decode("ascii", errors="ignore")
-                parsed = parse_line(text, self.time_unit)
+                plot = parse_plotter_line(text)
+                parsed = parse_line(text, self.time_unit) if not plot else None
             except Exception:
+                continue
+            if plot:  # standalone sketch: it reports its own tremor level (g) instead of raw movement
+                self.n_lines += 1
+                self.band_g, self.band_limit, self.band_at = plot[0], plot[1], time.perf_counter()
+                try:
+                    self.q.put_nowait((int(time.perf_counter() * 1e6), (0.0, 0.0, 1.0, 0.0, 0.0, 0.0), None, plot[0]))
+                except queue.Full:
+                    pass
                 continue
             if text.strip():
                 self.n_lines += 1
@@ -172,12 +192,16 @@ class HardwareRig:
                     self.n_bad, self.last_bad = self.n_bad + 1, text.strip()[:80]
             if parsed:
                 try:
-                    self.q.put_nowait(parsed)
+                    self.q.put_nowait((*parsed, None))
                 except queue.Full:
                     pass
 
     def latest_jpeg(self):
         return self.cam.jpeg if self.cam else None
+
+    def _band_self_buzzes(self):
+        """A standalone band already buzzes by itself above its own limit; don't send a second buzz on top."""
+        return time.perf_counter() - self.band_at < 1.0 and self.band_g > self.band_limit
 
     def no_data_message(self):
         if self.n_lines == 0:
@@ -188,7 +212,7 @@ class HardwareRig:
 
     def read(self, target_mm, running):
         try:
-            t_us, imu, dist = self.q.get(timeout=2.0)
+            t_us, imu, dist, tremor_g = self.q.get(timeout=2.0)
         except queue.Empty:
             raise RuntimeError(self.no_data_message()) from None
         if dist is not None:
@@ -196,19 +220,23 @@ class HardwareRig:
         if self._t0 is None:
             self._t0 = t_us
         finger, new = self.cam.take() if self.cam else (None, False)
-        return Sample((t_us - self._t0) / 1e6, imu, finger, new, self._dist)
+        return Sample((t_us - self._t0) / 1e6, imu, finger, new, self._dist, tremor_g)
 
     def buzz(self, effect=47):
         """Ask the Arduino to play a DRV2605L effect (47 = strong buzz)."""
         if self.protocol == "trainer":
-            self.ser.write(b"B\n")
+            if not self._band_self_buzzes():
+                self.ser.write(b"B\n")
         else:
             self.ser.write(f"H{effect}\n".encode())
 
     def play(self, kind):
         """Game-mode haptics: tick / buzz / burst / success (DRV2605L effect ids: verify on the real motor)."""
         if self.protocol == "trainer":  # the standalone sketch only knows B (buzz) and D (double click)
-            self.ser.write(b"D\n" if kind == "success" else b"B\n")
+            if kind == "success":
+                self.ser.write(b"D\n")
+            elif not self._band_self_buzzes():
+                self.ser.write(b"B\n")
         else:
             self.buzz(HAPTIC_EFFECTS[kind])
 

@@ -25,7 +25,9 @@ python recorder.py --port /dev/ttyACM0 --user u01 --task steady_hold --label ste
 With just the BMI270 + DRV2605L wristband (`firmware/surgitrack_trainer`), run
 `python tracker/server.py --serial <PORT> --device trainer`. The Live page connects to it and sessions become **steady
 holds**: keep your tremor under the limit for your level while the band buzzes when you go over. Accuracy = % of the hold
-under the limit; tremor and steadiness come from the IMU; there is no path or deviation. The limits are placeholders until
+under the limit; tremor and steadiness come from the IMU; there is no path or deviation. If the sketch is in standalone mode
+(`FOR_PI = false`) the tracker reads its own `tremor:`/`limit:` lines; sessions score normally but record no raw data, so they
+can't train the model (upload the streaming sketch for that). The limits are placeholders until
 real recordings exist (`tracker/engine.py: HOLD_LIMIT`). A camera adds path tracing later (`--camera 0`).
 
 ## Two separate switches: Mode and Display

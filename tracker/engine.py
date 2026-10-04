@@ -27,6 +27,9 @@ SECTIONS = 4  # a clean quarter of the path earns a success pulse
 HOLD_LIMIT = {1: 4.0, 2: 3.5, 3: 3.0, 4: 2.5, 5: 2.0}
 HOLD_STEP_S = 0.1      # re-evaluate the live tremor 10 times a second
 HOLD_WARMUP_S = 1.0    # no counting or buzzing in the first second (the filters need to settle)
+# Standalone-band input: the sketch (FOR_PI = false) reports its own 4-12 Hz tremor RMS in g. TREMOR_FULL_G maps that to the
+# 0-10 index so that the sketch's own limit (0.010 g) is exactly the level-1 hold limit (index 4.0).
+TREMOR_FULL_G = 0.025
 RAW_CAP = 20000
 
 
@@ -37,6 +40,12 @@ class Sample:
     finger_mm: tuple | None = None  # fingertip on the trace area, mm (None = hand not found)
     finger_new: bool = False       # True when finger_mm is a fresh camera frame
     dist_cm: float | None = None   # HC-SR04 height
+    tremor_g: float | None = None  # standalone band: tremor RMS in g measured on the device (imu is then a placeholder)
+
+
+def band_index(tremor_g):
+    """Tremor RMS in g reported by a standalone band → the 0-10 tremor index."""
+    return 10.0 * float(min(1.0, max(0.0, tremor_g / TREMOR_FULL_G)))
 
 
 class EngineError(Exception):
@@ -60,6 +69,7 @@ class SessionEngine:
         # Game mode: tiered haptics (tick / buzz / burst / success). haptic_fx(kind) plays the matching effect.
         self.haptic_fx = haptic_fx or (lambda kind: None)
         self.tiered = False
+        self._band, self._trem_now = False, 0.0  # True once the band reports tremor_g (standalone mode, no raw IMU)
         self.task = "path"  # "path" = trace a path with the camera, "hold" = hold the hand steady (IMU only)
         self.screener = screener
         self.level, self.path_id, self.length_s = 1, "l1-straight", 12.0
@@ -105,7 +115,7 @@ class SessionEngine:
             if self.phase == "run":
                 raise EngineError("Stop the current run first")
             self.phase, self.cal_step, self.cal_count = "calib", 0, int(CAL_SECONDS)
-            self._cal_t0, self._cal_buf = None, []
+            self._cal_t0, self._cal_buf, self._cal_g = None, [], []
             self.version += 1
 
     def calib_next(self):
@@ -115,7 +125,7 @@ class SessionEngine:
             if self.cal_step in (0, 1):
                 self.cal_step += 1
                 if self.cal_step == 2:
-                    self._cal_t0, self._cal_buf = None, []
+                    self._cal_t0, self._cal_buf, self._cal_g = None, [], []
                 self.version += 1
             elif self.cal_step == 3:
                 self.start_run()
@@ -155,6 +165,7 @@ class SessionEngine:
             acc = 100 * self._in / n if n else None
             trem = self._live_tremor()
             return {
+                "tremorG": s.tremor_g,
                 "t": round(s.t, 3), "phase": self.phase, "imu": [round(v, 4) for v in s.imu],
                 "finger": None if s.finger_mm is None else [round(s.finger_mm[0], 3), round(s.finger_mm[1], 3)],
                 "dist": s.dist_cm, "dev": None if self._dev_now is None else round(self._dev_now, 3),
@@ -173,6 +184,8 @@ class SessionEngine:
         with self.lock:
             self._last = s
             self._imu.append(s.imu)
+            if s.tremor_g is not None:
+                self._band, self._trem_now = True, band_index(s.tremor_g)
             if self.phase == "calib" and self.cal_step == 2:
                 self._calibrate(s)
             elif self.phase == "run":
@@ -194,12 +207,12 @@ class SessionEngine:
         self._sec = 0
         self._sec_n = self._sec_out = 0
         self.success_pulses = 0
-        self._last_hold, self._hold_series = -1e9, []
+        self._last_hold, self._hold_series, self._band_g = -1e9, [], []
         self._accel, self._raw = [], []
         self._ft, self._fx = [], []
         self._last_screen = 0.0
         self._screen = []
-        self._cal_t0, self._cal_buf = None, []
+        self._cal_t0, self._cal_buf, self._cal_g = None, [], []
 
     # Game-mode haptics. These only drive the motor; they never change the recorded metrics.
     def _play(self, kind, t, hold):
@@ -244,17 +257,22 @@ class SessionEngine:
         if self._cal_t0 is None:
             self._cal_t0 = s.t
         self._cal_buf.append(s.imu[:3])
+        if s.tremor_g is not None:
+            self._cal_g.append(s.tremor_g)
         el = s.t - self._cal_t0
         self.cal_count = max(1, math.ceil(CAL_SECONDS - el))
         if el >= CAL_SECONDS:
-            a = np.array(self._cal_buf)
-            g = a.mean(axis=0)
-            self.sigma_base = T.noise_floor(a, self.fs)
-            self.baseline = {
-                "pitch": round(math.degrees(math.atan2(-g[0], math.hypot(g[1], g[2]))), 2),
-                "roll": round(math.degrees(math.atan2(g[1], g[2])), 2),
-                "noiseSigma": round(self.sigma_base, 5),
-            }
+            if self._cal_g:  # standalone band: no raw IMU, so the baseline is just the resting tremor level it reported
+                self.baseline = {"pitch": 0.0, "roll": 0.0, "noiseSigma": round(float(np.mean(self._cal_g)), 5)}
+            else:
+                a = np.array(self._cal_buf)
+                g = a.mean(axis=0)
+                self.sigma_base = T.noise_floor(a, self.fs)
+                self.baseline = {
+                    "pitch": round(math.degrees(math.atan2(-g[0], math.hypot(g[1], g[2]))), 2),
+                    "roll": round(math.degrees(math.atan2(g[1], g[2])), 2),
+                    "noiseSigma": round(self.sigma_base, 5),
+                }
             self.cal_step, self.cal_count = 3, 0
             self.version += 1
 
@@ -264,7 +282,7 @@ class SessionEngine:
             self._t0 = s.t
         el = s.t - self._t0
         self._accel.append(s.imu[:3])
-        if len(self._raw) < RAW_CAP:
+        if len(self._raw) < RAW_CAP and s.tremor_g is None:  # a standalone band has no raw movement to record
             self._raw.append({"t": round(el, 3), "ax": s.imu[0], "ay": s.imu[1], "az": s.imu[2],
                               "gx": s.imu[3], "gy": s.imu[4], "gz": s.imu[5],
                               **({"camX": round(s.finger_mm[0], 3), "camY": round(s.finger_mm[1], 3)} if s.finger_mm else {}),
@@ -273,6 +291,8 @@ class SessionEngine:
             if el >= HOLD_WARMUP_S and s.t - self._last_hold >= HOLD_STEP_S:
                 self._last_hold = s.t
                 trem, limit = float(self._live_tremor()), self.tolerance()
+                if s.tremor_g is not None:
+                    self._band_g.append(s.tremor_g)
                 out = trem > limit
                 self._n += 1
                 self._in += not out
@@ -302,7 +322,7 @@ class SessionEngine:
             self._out = out
             self._ft.append(el)
             self._fx.append(s.finger_mm)
-        if self.screener and el - self._last_screen >= 1.0 and len(self._imu) == self._imu.maxlen:
+        if self.screener and not self._band and el - self._last_screen >= 1.0 and len(self._imu) == self._imu.maxlen:
             self._last_screen = el
             try:
                 self._screen.append(float(self.screener(np.array(self._imu), self.fs)))
@@ -331,6 +351,8 @@ class SessionEngine:
         return T.smoothness(sp, fs) if len(sp) else 0.0
 
     def _live_tremor(self):
+        if self._band:
+            return self._trem_now
         if len(self._imu) < T.MIN_SAMPLES:
             return 0.0
         return T.tremor_index(np.array([i[:3] for i in self._imu]), self.fs, self.sigma_base)
@@ -351,7 +373,7 @@ class SessionEngine:
             metrics = {
                 "accuracy": round(clip(100 * self._in / self._n, 0, 100), 1),
                 "avgDeviationMm": 0.0,
-                "tremor": round(clip(T.tremor_index(np.array(self._accel), self.fs, self.sigma_base), 0, 10), 1),
+                "tremor": round(clip(band_index(float(np.sqrt(np.mean(np.square(self._band_g))))) if self._band_g else T.tremor_index(np.array(self._accel), self.fs, self.sigma_base), 0, 10), 1),
                 "smoothness": round(clip(100 - 25 * float(series.std()), 0, 100)),
                 "completionTimeS": round(el, 1),
                 "hapticPulses": self._pulses,
